@@ -191,7 +191,7 @@ static int _dpu_master_spawn_server(dpu_mc_t *mc, char **argv)
         execve(server_cmd, argv, environ);
 
         /* if execve returns it has failed */
-        fprintf(stderr, "Could not spawn dpu server for local rank %lu!\n", mc->local_rank);
+        fprintf(stderr, "Could not spawn dpu server for local rank %u!\n", mc->local_rank);
     }
 
     return UCC_OK;

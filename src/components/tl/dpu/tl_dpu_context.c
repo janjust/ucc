@@ -188,7 +188,7 @@ UCC_CLASS_INIT_FUNC(ucc_tl_dpu_context_t,
                 if (strcmp(h, hname) == 0) {
                     for (i = 0; i < 2 * MAX_DPU_COUNT; i++) {
                         memset(dpu_tmp, 0, MAX_DPU_HOST_NAME);
-                        fscanf(fp, "%s", dpu_tmp);
+                        ret = fscanf(fp, "%s", dpu_tmp);
 
                         if(strchr(dpu_tmp, ',') != NULL)
                         {
