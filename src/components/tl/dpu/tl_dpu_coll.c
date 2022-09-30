@@ -518,7 +518,7 @@ ucc_status_t ucc_tl_dpu_coll_init(ucc_base_coll_args_t      *coll_args,
     task->super.post                 = ucc_tl_dpu_coll_start;
     task->super.progress             = ucc_tl_dpu_coll_progress;
     task->super.finalize             = ucc_tl_dpu_coll_finalize;
-    task->super.triggered_post       = NULL;
+    task->super.triggered_post       = ucc_triggered_post;
     task->status                     = UCC_TL_DPU_TASK_STATUS_INIT;
     task->dpu_per_node_cnt           = ctx->dpu_per_node_cnt;
 
@@ -550,6 +550,7 @@ ucc_status_t ucc_tl_dpu_coll_init(ucc_base_coll_args_t      *coll_args,
             task, tl_team->dpu_sync_list[0].coll_id_issued);
     *task_h = &task->super;
 
+    // sleep(30);
     status = ucc_tl_dpu_send_dpu_task(task, ctx);
     if (status != UCC_OK) {
         ucc_mpool_put(task);
