@@ -253,6 +253,7 @@ ucs_status_t dpu_hc_issue_hangup(dpu_hc_t *dpu_hc, dpu_put_sync_t *sync, thread_
 ucs_status_t dpu_send_init_completion(dpu_hc_t *hc);
 
 size_t dpu_ucc_dt_size(ucc_datatype_t dt);
+int dpu_dc_create(dpu_hc_t *hc, dpu_hc_t *dc);
 
 void dpu_waitfor_comm_thread(thread_ctx_t *ctx, thread_sync_t *sync);
 void dpu_signal_comm_thread(thread_ctx_t *ctx, thread_sync_t *sync);
