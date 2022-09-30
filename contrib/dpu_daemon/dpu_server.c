@@ -137,7 +137,7 @@ static ucc_status_t dpu_coll_do_blocking_alltoall(thread_ctx_t *ctx, dpu_put_syn
     ucs_status_t status;
     size_t team_rank, team_size;
     dpu_hc_t *hc = ctx->hc;
-    ucc_team_h team = ctx->comm.team_pool[lsync->team_id];
+    ucc_team_h team = ctx->comm->team_pool[lsync->team_id];
     UCC_CHECK(ucc_team_get_size(team, (uint32_t*)&team_size));
     UCC_CHECK(ucc_team_get_my_ep(team, (uint64_t*)&team_rank));
 
@@ -204,7 +204,7 @@ static ucc_status_t dpu_coll_do_blocking_alltoallv(thread_ctx_t *ctx, dpu_put_sy
     ucc_rank_t team_rank, team_size;
     dpu_hc_t *hc = ctx->hc;
     ucc_coll_args_t *args = &lsync->coll_args;
-    ucc_team_h team = ctx->comm.team_pool[lsync->team_id];
+    ucc_team_h team = ctx->comm->team_pool[lsync->team_id];
     UCC_CHECK(ucc_team_get_size(team, (uint32_t*)&team_size));
     UCC_CHECK(ucc_team_get_my_ep(team, (uint64_t*)&team_rank));
 
@@ -289,7 +289,7 @@ static void dpu_coll_collect_host_rkeys(thread_ctx_t *ctx, dpu_put_sync_t *lsync
     ucs_status_t status;
     ucc_coll_req_h request;
     dpu_hc_t *hc = ctx->hc;
-    ucc_team_h team = ctx->comm.team_pool[lsync->team_id];
+    ucc_team_h team = ctx->comm->team_pool[lsync->team_id];
     ucc_rank_t team_size = 0;
     UCC_CHECK(ucc_team_get_size(team, &team_size));
     void *src_buf = lsync;
@@ -323,7 +323,7 @@ static void dpu_coll_collect_host_rkeys(thread_ctx_t *ctx, dpu_put_sync_t *lsync
     UCC_CHECK(ucc_collective_init(&coll, &request, team));
     UCC_CHECK(ucc_collective_post(request));
     while (UCC_OK != ucc_collective_test(request)) {
-        ucc_context_progress(ctx->comm.ctx);
+        ucc_context_progress(ctx->comm->ctx);
     }
     UCC_CHECK(ucc_collective_finalize(request));
 
@@ -360,14 +360,14 @@ void dpu_coll_do_barrier(thread_ctx_t *ctx, dpu_put_sync_t *lsync)
         .coll_type = UCC_COLL_TYPE_BARRIER,
     };
 
-    ucc_team_h team = ctx->comm.team_pool[lsync->team_id];
+    ucc_team_h team = ctx->comm->team_pool[lsync->team_id];
     CTX_LOG("Issue Synchronizing Barrier on team %d\n", lsync->team_id);
     assert(team != NULL);
 
     UCC_CHECK(ucc_collective_init(&coll, &request, team));
     UCC_CHECK(ucc_collective_post(request));
     while (UCC_OK != ucc_collective_test(request)) {
-        ucc_context_progress(ctx->comm.ctx);
+        ucc_context_progress(ctx->comm->ctx);
     }
     UCC_CHECK(ucc_collective_finalize(request));
 }
@@ -376,7 +376,7 @@ static void dpu_coll_free_host_rkeys(thread_ctx_t *ctx, dpu_put_sync_t *lsync)
 {
     int i;
     unsigned int team_size = 0;
-    ucc_team_h team = ctx->comm.team_pool[lsync->team_id];
+    ucc_team_h team = ctx->comm->team_pool[lsync->team_id];
     UCC_CHECK(ucc_team_get_size(team, &team_size));
     CTX_LOG("Freeing src/dst rkeys for %u hosts\n", team_size);
     for (i = 0; i < team_size; i++) {
@@ -477,7 +477,7 @@ static ucc_status_t dpu_create_comm_team(thread_ctx_t *ctx, dpu_put_sync_t *lsyn
     team_params.ep = i; 
     team_params.ep_map = ucc_ep_map_from_array(&dpu_rank_list, dpu_team_size, full_size, 0);
 
-    status = ucc_team_create_post(&ctx->comm.ctx, 1, &team_params, &new_team);
+    status = ucc_team_create_post(&ctx->comm->ctx, 1, &team_params, &new_team);
     if (UCC_OK != status) {
         fprintf(stderr, "ucc_team_create_post failed with %d\n", status);
         goto err;
@@ -485,7 +485,7 @@ static ucc_status_t dpu_create_comm_team(thread_ctx_t *ctx, dpu_put_sync_t *lsyn
 
     do {
         status = ucc_team_create_test(new_team);
-        ucc_context_progress(ctx->comm.ctx);
+        ucc_context_progress(ctx->comm->ctx);
     } while (UCC_INPROGRESS == status);
         
     if (UCC_OK != status) {
@@ -495,9 +495,9 @@ static ucc_status_t dpu_create_comm_team(thread_ctx_t *ctx, dpu_put_sync_t *lsyn
 
     /* a new team has been created, insert it into the thread context */
     assert(new_team != NULL);
-    ctx->comm.team_pool[team_id] = new_team; 
-    ctx->comm.dpu_team_ctx_ranks[team_id] = dpu_rank_list;
-    ctx->comm.host_team_ctx_ranks[team_id] = host_rank_list;
+    ctx->comm->team_pool[team_id] = new_team; 
+    ctx->comm->dpu_team_ctx_ranks[team_id] = dpu_rank_list;
+    ctx->comm->host_team_ctx_ranks[team_id] = host_rank_list;
     CTX_LOG("created new team with team_id %u size %d\n",
             team_id, dpu_team_size);
     return UCC_OK;
@@ -511,7 +511,7 @@ err:
 static ucc_status_t dpu_destroy_comm_team(thread_ctx_t *ctx, dpu_put_sync_t *lsync)
 {
     uint16_t team_id = lsync->team_id;
-    ucc_team_h team = ctx->comm.team_pool[team_id]; 
+    ucc_team_h team = ctx->comm->team_pool[team_id]; 
     ucc_status_t status;
 
     CTX_LOG("destroying team with team_id %d coll_id %d\n",
@@ -524,14 +524,14 @@ static ucc_status_t dpu_destroy_comm_team(thread_ctx_t *ctx, dpu_put_sync_t *lsy
         return status;
     }
 
-    ctx->comm.team_pool[team_id] = NULL; 
-    if (ctx->comm.dpu_team_ctx_ranks[team_id] != NULL) {
-        free(ctx->comm.dpu_team_ctx_ranks[team_id]);
-        ctx->comm.dpu_team_ctx_ranks[team_id] = NULL;
+    ctx->comm->team_pool[team_id] = NULL; 
+    if (ctx->comm->dpu_team_ctx_ranks[team_id] != NULL) {
+        free(ctx->comm->dpu_team_ctx_ranks[team_id]);
+        ctx->comm->dpu_team_ctx_ranks[team_id] = NULL;
     }
-    if (ctx->comm.host_team_ctx_ranks[team_id] != NULL) {
-        free(ctx->comm.host_team_ctx_ranks[team_id]);
-        ctx->comm.host_team_ctx_ranks[team_id] = NULL;
+    if (ctx->comm->host_team_ctx_ranks[team_id] != NULL) {
+        free(ctx->comm->host_team_ctx_ranks[team_id]);
+        ctx->comm->host_team_ctx_ranks[team_id] = NULL;
     }
 
     CTX_LOG("destroyed team with team_id %d\n", team_id);
@@ -542,6 +542,7 @@ void *dpu_comm_thread(void *arg)
 {
     thread_ctx_t    *ctx = (thread_ctx_t *)arg;
     dpu_hc_t        *hc = ctx->hc;
+    dpu_hc_t        *dc;
     uint32_t        coll_id, dpu_team_size;
     size_t          dpu_team_rank;
     ucc_coll_type_t coll_type; 
@@ -558,6 +559,9 @@ void *dpu_comm_thread(void *arg)
     dpu_thread_set_affinity(ctx);
     CTX_LOG("Started comm thread\n");
 
+    ctx->dc = dc = malloc(sizeof(dpu_hc_t));
+    dpu_dc_create(hc, dc);
+    dpu_hc_connect_remote_hosts(dc, ctx->comm, 0);
 
     while (1) {
         ctx->coll_sync->coll_id++;
@@ -615,28 +619,28 @@ void *dpu_comm_thread(void *arg)
 
         else if (coll_type == UCC_COLL_TYPE_ALLREDUCE) {
             dpu_coll_collect_host_rkeys(ctx, lsync);
-            ucc_team_h team = ctx->comm.team_pool[lsync->team_id];
+            ucc_team_h team = ctx->comm->team_pool[lsync->team_id];
             assert(team != NULL);
             UCC_CHECK(ucc_team_get_size(team, &dpu_team_size));
             UCC_CHECK(ucc_team_get_my_ep(team, &dpu_team_rank));
  
-            ucc_datatype_t dtype = lsync->coll_args.src.info.datatype;
-            size_t dt_size = dpu_ucc_dt_size(dtype);
-            hc->pipeline.my_count  = lsync->count_total / dpu_team_size;
-            hc->pipeline.my_offset = hc->pipeline.my_count * dt_size * dpu_team_rank;
-            if (dpu_team_rank == dpu_team_size - 1) {
-                hc->pipeline.my_count += lsync->count_total % dpu_team_size;
-            }
+            // ucc_datatype_t dtype = lsync->coll_args.src.info.datatype;
+            // size_t dt_size = dpu_ucc_dt_size(dtype);
+            // hc->pipeline.my_count  = lsync->count_total / dpu_team_size;
+            // hc->pipeline.my_offset = hc->pipeline.my_count * dt_size * dpu_team_rank;
+            // if (dpu_team_rank == dpu_team_size - 1) {
+            //     hc->pipeline.my_count += lsync->count_total % dpu_team_size;
+            // }
 
-            dpu_signal_comp_thread(ctx, thread_main_sync);
-            while (hc->pipeline.count_serviced < hc->pipeline.my_count) {
-                dpu_hc_progress_allreduce(ctx->hc, lsync, ctx);
-            }
-            dpu_hc_issue_hangup(ctx->hc, lsync, ctx);
+            // dpu_signal_comp_thread(ctx, thread_main_sync);
+            // while (hc->pipeline.count_serviced < hc->pipeline.my_count) {
+            //     dpu_hc_progress_allreduce(ctx->hc, lsync, ctx);
+            // }
+            // dpu_hc_issue_hangup(ctx->hc, lsync, ctx);
 
-            CTX_LOG("Waiting for worker threads to complete coll id: %u, type: %d\n",
-                    coll_id, coll_type);
-            dpu_waitfor_comp_thread(ctx, thread_main_sync);
+            // CTX_LOG("Waiting for worker threads to complete coll id: %u, type: %d\n",
+            //         coll_id, coll_type);
+            // dpu_waitfor_comp_thread(ctx, thread_main_sync);
 
             CTX_LOG("Waiting for all ranks to complete coll id: %u, type: %d\n",
                     coll_id, coll_type);
@@ -682,6 +686,7 @@ void *dpu_comm_thread(void *arg)
         }
     }
 
+    // dpu_hc_reset_job(dc);
     CTX_LOG("Communication thread is finalized \n");
 }
 
@@ -766,7 +771,7 @@ void *dpu_worker_thread(void *arg)
 
         } while (!finished);
 
-        ucc_team_h team = ctx->comm.team_pool[lsync->team_id];
+        ucc_team_h team = ctx->comm->team_pool[lsync->team_id];
         assert(team != NULL);
         UCC_CHECK(ucc_team_get_size(team, &dpu_team_size));
         ctx->coll_sync->count_serviced = ctx->hc->pipeline.my_count * dpu_team_size;
@@ -793,9 +798,9 @@ void _sighandler(int signal)
 int main(int argc, char **argv)
 {
     char *s = NULL;
-    int omp_threads = 6;
-    s = getenv("UCC_MC_CPU_REDUCE_NUM_THREADS");
-    if (s) { omp_threads = atoi(s); }
+    int num_threads = 1;
+    // s = getenv("UCC_MC_CPU_REDUCE_NUM_THREADS");
+    // if (s) { num_threads = atoi(s); }
     
     int window_size = 32;
     s = getenv("UCC_TL_DPU_BCAST_WINDOW");
@@ -807,7 +812,7 @@ int main(int argc, char **argv)
     if (s) { listen_port = atoi(s); }
     hc.port = listen_port;
 
-    printf("DPU server: Running with %d OpenMP threads on port %d\n", omp_threads, listen_port);
+    printf("DPU server: Running with %d OpenMP threads on port %d\n", num_threads, listen_port);
     UCC_CHECK(dpu_ucc_init(argc, argv, &ucc_glob));
     UCC_CHECK(dpu_hc_init(&hc));
 
@@ -820,32 +825,37 @@ int main(int argc, char **argv)
     UCC_CHECK(dpu_hc_accept_job(&hc));
     UCS_CHECK(dpu_hc_connect_localhost_ep(&hc));
 
-    thread_ctx_t worker_ctx = {
-        .idx = THREAD_IDX_WORKER,
-        .hc = &hc,
-        .coll_sync = &coll_sync,
-    };
+    // thread_ctx_t worker_ctx = {
+    //     .idx = THREAD_IDX_WORKER,
+    //     .hc = &hc,
+    //     .coll_sync = &coll_sync,
+    // };
 
-    thread_ctx_t comm_ctx = {
-        .idx = THREAD_IDX_COMM,
-        .hc = &hc,
-        .coll_sync = &coll_sync,
-    };
-
-    UCC_CHECK(dpu_ucc_alloc_team(&ucc_glob, &worker_ctx.comm));
-    UCC_CHECK(dpu_ucc_alloc_team(&ucc_glob, &comm_ctx.comm));
-    dpu_hc_connect_remote_hosts(&hc, &comm_ctx.comm);
+    dpu_ucc_comm_t comm = {0};
+    thread_ctx_t comm_ctx[8] = {0};
+    // UCC_CHECK(dpu_ucc_alloc_team(&ucc_glob, &worker_ctx.comm));
+    UCC_CHECK(dpu_ucc_alloc_team(&ucc_glob, &comm));
+    dpu_hc_connect_remote_hosts(&hc, &comm, 1);
     UCS_CHECK(dpu_send_init_completion(&hc));
     
-    pthread_create(&worker_ctx.id, NULL, dpu_worker_thread, &worker_ctx);
-    pthread_create(&comm_ctx.id, NULL, dpu_comm_thread, &comm_ctx);
-
+    // pthread_create(&worker_ctx.id, NULL, dpu_worker_thread, &worker_ctx);
     
-    pthread_join(worker_ctx.id, NULL);
-    pthread_join(comm_ctx.id, NULL);
+    for (int i=0; i<num_threads; i++) {
+        thread_ctx_t *ctx = &comm_ctx[i];
+        ctx->idx = i,
+        ctx->hc = &hc,
+        ctx->coll_sync = &coll_sync,
+        ctx->comm = &comm,
+        pthread_create(&ctx->id, NULL, dpu_comm_thread, ctx);
+    }
+    
+    // pthread_join(worker_ctx.id, NULL);
+    for (int i=0; i<num_threads; i++) {
+        pthread_join(comm_ctx[i].id, NULL);
+    }
 
-    dpu_ucc_free_team(&ucc_glob, &worker_ctx.comm);
-    dpu_ucc_free_team(&ucc_glob, &comm_ctx.comm);
+    // dpu_ucc_free_team(&ucc_glob, &worker_ctx.comm);
+    dpu_ucc_free_team(&ucc_glob, &comm);
     
     dpu_hc_reset_job(&hc);
     dpu_hc_finalize(&hc);

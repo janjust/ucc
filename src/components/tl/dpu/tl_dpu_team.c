@@ -177,7 +177,7 @@ UCC_CLASS_INIT_FUNC(ucc_tl_dpu_team_t, ucc_base_context_t *tl_context,
 
         /* Execute oob allgather on behalf of DPU */
         if (params->id == UCC_WORLD_TEAM_ID) {
-            int num_colls   = 4;    // FIXME: how to avoid hardcoding?
+            int num_colls   = 2;    // FIXME: how to avoid hardcoding?
             _dpu_client_oob_allgather(self, rail, num_colls);
             _dpu_init_completion_wait(self, rail);
         }
@@ -253,7 +253,7 @@ ucc_status_t ucc_tl_dpu_team_destroy(ucc_base_team_t *tl_team)
 
         /* Execute oob allgather on behalf of DPU */
         if (team_id == UCC_WORLD_TEAM_ID) {
-            int num_colls = 2;
+            int num_colls = 1;
             _dpu_client_oob_allgather(team, rail, num_colls);
         }
     }

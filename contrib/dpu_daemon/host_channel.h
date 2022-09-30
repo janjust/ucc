@@ -181,6 +181,7 @@ typedef struct dpu_hc_t {
     };
 
     /* Remote UCX stuff */
+    void *remote_addrs;
     void *rem_worker_addr;
     size_t rem_worker_addr_len;
     ucp_ep_h localhost_ep;
@@ -217,7 +218,7 @@ typedef struct dpu_hc_t {
 int dpu_hc_init(dpu_hc_t *dpu_hc);
 int dpu_hc_accept_job(dpu_hc_t *hc);
 int dpu_hc_connect_localhost_ep(dpu_hc_t *hc);
-int dpu_hc_connect_remote_hosts(dpu_hc_t *hc, dpu_ucc_comm_t *comm);
+int dpu_hc_connect_remote_hosts(dpu_hc_t *hc, dpu_ucc_comm_t *comm, int collect_addrs);
 int dpu_hc_reply(dpu_hc_t *hc, dpu_get_sync_t *coll_sync);
 int dpu_hc_wait(dpu_hc_t *hc, unsigned int coll_id);
 int dpu_hc_reset_job(dpu_hc_t *dpu_hc);
@@ -227,8 +228,9 @@ int dpu_hc_finalize(dpu_hc_t *dpu_hc);
 typedef struct thread_ctx_t {
     pthread_t       id;
     int             idx;
-    dpu_ucc_comm_t  comm;
+    dpu_ucc_comm_t  *comm;
     dpu_hc_t        *hc;
+    dpu_hc_t        *dc;
     dpu_get_sync_t  *coll_sync;
 } thread_ctx_t;
 

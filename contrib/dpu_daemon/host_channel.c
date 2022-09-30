@@ -434,19 +434,21 @@ int dpu_hc_connect_localhost_ep(dpu_hc_t *hc)
     return status;
 }
 
-static ucs_status_t _dpu_create_remote_host_eps(dpu_hc_t *hc, dpu_ucc_comm_t *comm)
+static ucs_status_t _dpu_create_remote_host_eps(dpu_hc_t *hc, dpu_ucc_comm_t *comm, int collect_addrs)
 {
     ucs_status_t status;
     ucp_ep_params_t ep_params;
     int i;
-    void *remote_addrs = NULL;
+    // void *remote_addrs = NULL;
     size_t rem_worker_addr_len = hc->rem_worker_addr_len;
     void *rem_worker_addr = hc->rem_worker_addr;
 
     /* Allgather Host EP addresses */
     hc->host_eps = calloc(hc->world_size, sizeof(ucp_ep_h));
-    remote_addrs = calloc(hc->world_size, rem_worker_addr_len);
-    dpu_coll_collect_host_addrs(comm, rem_worker_addr, rem_worker_addr_len, remote_addrs);
+    if (collect_addrs) {
+        hc->remote_addrs = calloc(hc->world_size, rem_worker_addr_len);
+        dpu_coll_collect_host_addrs(comm, rem_worker_addr, rem_worker_addr_len, hc->remote_addrs);
+    }
 
     ep_params.field_mask    = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS |
                               UCP_EP_PARAM_FIELD_ERR_HANDLER |
@@ -457,12 +459,12 @@ static ucs_status_t _dpu_create_remote_host_eps(dpu_hc_t *hc, dpu_ucc_comm_t *co
     /* Connect to all remote hosts */
     for (i = 0; i < hc->world_size; i++) {
         /* Skip Local Host, Already Connected */
-        if (i == hc->world_rank) {
+        if (i == hc->world_rank && collect_addrs) {
             hc->host_eps[i] = hc->localhost_ep;
             continue;
         }
 
-        ep_params.address = remote_addrs + i * rem_worker_addr_len;
+        ep_params.address = hc->remote_addrs + i * rem_worker_addr_len;
         status = ucp_ep_create(hc->ucp_worker, &ep_params, &hc->host_eps[i]);
         if (status != UCS_OK) {
             fprintf(stderr, "failed to create endpoint on dpu to host %d (%s)\n",
@@ -638,12 +640,12 @@ out:
     return ret;
 }
 
-int dpu_hc_connect_remote_hosts(dpu_hc_t *hc, dpu_ucc_comm_t *comm)
+int dpu_hc_connect_remote_hosts(dpu_hc_t *hc, dpu_ucc_comm_t *comm, int collect_addrs)
 {
     int ret;
 
-    if (ret = _dpu_create_remote_host_eps(hc, comm)) {
-        fprintf(stderr, "_dpu_create_remote_host_eps failed!\n");
+    if (ret = _dpu_create_remote_host_eps(hc, comm, collect_addrs)) {
+        fprintf(stderr, "_dpu_create_remote_host_eps failed!, %d\n", collect_addrs);
         ret = UCC_ERR_NO_MESSAGE;
         goto err;
     }
@@ -655,6 +657,31 @@ int dpu_hc_connect_remote_hosts(dpu_hc_t *hc, dpu_ucc_comm_t *comm)
     }
 
 err:
+    return ret;
+}
+
+int dpu_dc_create(dpu_hc_t *hc, dpu_hc_t *dc)
+{
+    int ret;
+    memcpy(dc, hc, sizeof(dpu_hc_t));
+
+    DPU_LOG("Creating Data channel\n");
+    ret = _dpu_ucx_init(dc);
+    if (ret) {
+        goto err_ucx;
+    }
+
+    ret = _dpu_hc_init_pipeline(hc);
+    if (ret) {
+        fprintf(stderr, "init pipeline failed!\n");
+        goto err_ucx;
+    }
+
+    ret = 0;
+    goto out;
+err_ucx:
+    _dpu_ucx_fini(dc);
+out:
     return ret;
 }
 
@@ -716,7 +743,7 @@ ucc_rank_t dpu_get_world_rank(dpu_hc_t *hc,  int dpu_rank, int team_id, thread_c
     if (team_id == UCC_WORLD_TEAM_ID) {
         world_rank = dpu_rank;
     } else {
-        world_rank = ctx->comm.dpu_team_ctx_ranks[team_id][dpu_rank];
+        world_rank = ctx->comm->dpu_team_ctx_ranks[team_id][dpu_rank];
     }
 
     return world_rank;
@@ -731,7 +758,7 @@ ucc_rank_t dpu_get_host_ep_rank(dpu_hc_t *hc,  int host_rank, int team_id, threa
     if (team_id == UCC_WORLD_TEAM_ID) {
         world_rank = host_rank;
     } else {
-        world_rank = ctx->comm.host_team_ctx_ranks[team_id][host_rank];
+        world_rank = ctx->comm->host_team_ctx_ranks[team_id][host_rank];
     }
 
     ep_rank = world_rank * hc->dpu_per_node_cnt;
