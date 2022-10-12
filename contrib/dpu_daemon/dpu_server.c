@@ -274,7 +274,7 @@ static void dpu_coll_collect_host_rkeys(thread_ctx_t *ctx, dpu_put_sync_t *lsync
     int i, ep_rank;
     ucs_status_t status;
     ucc_coll_req_h request;
-    dpu_hc_t *hc = ctx->hc;
+    dpu_hc_t *hc = ctx->dc;
     ucc_team_h team = ctx->comm->team_pool[lsync->team_id];
     ucc_rank_t team_size = 0;
     UCC_CHECK(ucc_team_get_size(team, &team_size));
@@ -362,14 +362,15 @@ static void dpu_coll_free_host_rkeys(thread_ctx_t *ctx, dpu_put_sync_t *lsync)
 {
     int i;
     unsigned int team_size = 0;
+    dpu_hc_t *hc = ctx->dc;
     ucc_team_h team = ctx->comm->team_pool[lsync->team_id];
     UCC_CHECK(ucc_team_get_size(team, &team_size));
     CTX_LOG("Freeing src/dst rkeys for %u hosts\n", team_size);
     for (i = 0; i < team_size; i++) {
-        if (ctx->hc->host_src_rkeys[i] != NULL)
-            ucp_rkey_destroy(ctx->hc->host_src_rkeys[i]);
-        if (ctx->hc->host_dst_rkeys[i] != NULL)
-            ucp_rkey_destroy(ctx->hc->host_dst_rkeys[i]);
+        if (ctx->dc->host_src_rkeys[i] != NULL)
+            ucp_rkey_destroy(hc->host_src_rkeys[i]);
+        if (ctx->dc->host_dst_rkeys[i] != NULL)
+            ucp_rkey_destroy(hc->host_dst_rkeys[i]);
     }
 }
 
@@ -559,20 +560,31 @@ void *dpu_comm_thread(void *arg)
     CTX_LOG("Started comm thread %d\n", ctx->idx);
 
     ctx->dc = dc = malloc(sizeof(dpu_hc_t));
-    dpu_dc_create(hc, dc);
-    dpu_hc_connect_remote_hosts(dc, ctx->comm, 0);
-
-    if (ctx->idx > 0) { 
-        dpu_waitfor_master_thread(ctx);
-        goto end;
+    if (ctx->idx == 0) {
+        dpu_dc_create(ctx, hc, dc);
+        dpu_hc_connect_remote_hosts(dc, ctx->comm, 0);
+        // dpu_signal_worker_threads(ctx);
+        dpu_signal_comp_thread(ctx, thread_main_sync);
+    } else {
+        dpu_waitfor_comm_thread(ctx, thread_main_sync);
+        // dpu_waitfor_master_thread(ctx);
+        dpu_dc_create(ctx, hc, dc);
+        dpu_hc_connect_remote_hosts(dc, ctx->comm, 0);
     }
 
     while (1) {
-        ctx->coll_sync->coll_id++;
-        ctx->coll_sync->count_serviced = 0;
-
-        CTX_LOG("Waiting for coll id: %u from host\n", ctx->coll_sync->coll_id);
-        dpu_wait_for_next_coll(ctx);
+        if (ctx->idx == 0) {
+            ctx->coll_sync->coll_id++;
+            ctx->coll_sync->count_serviced = 0;
+            CTX_LOG("Waiting for coll id: %u from host\n", ctx->coll_sync->coll_id);
+            dpu_wait_for_next_coll(ctx);
+            // dpu_signal_worker_threads(ctx);
+            dpu_signal_comp_thread(ctx, thread_main_sync);
+        } else {
+            CTX_LOG("Waiting for master thread to receive next coll\n");
+            // dpu_waitfor_master_thread(ctx);
+            dpu_waitfor_comm_thread(ctx, thread_main_sync);
+        }
 
         coll_id     = lsync->coll_id;
         coll_type   = lsync->coll_args.coll_type;
@@ -629,29 +641,43 @@ void *dpu_comm_thread(void *arg)
             UCC_CHECK(ucc_team_get_size(team, &dpu_team_size));
             UCC_CHECK(ucc_team_get_my_ep(team, &dpu_team_rank));
  
-            // ucc_datatype_t dtype = lsync->coll_args.src.info.datatype;
-            // size_t dt_size = dpu_ucc_dt_size(dtype);
-            // hc->pipeline.my_count  = lsync->count_total / dpu_team_size;
-            // hc->pipeline.my_offset = hc->pipeline.my_count * dt_size * dpu_team_rank;
-            // if (dpu_team_rank == dpu_team_size - 1) {
-            //     hc->pipeline.my_count += lsync->count_total % dpu_team_size;
-            // }
+            ucc_datatype_t dtype = lsync->coll_args.src.info.datatype;
+            size_t dt_size = dpu_ucc_dt_size(dtype);
+            dc->pipeline.my_count  = lsync->count_total / dpu_team_size;
+            dc->pipeline.my_offset = dc->pipeline.my_count * dt_size * dpu_team_rank;
+            if (dpu_team_rank == dpu_team_size - 1) {
+                dc->pipeline.my_count += lsync->count_total % dpu_team_size;
+            }
+
+            /* Adjust count and offset for thread id */
+            dc->pipeline.my_count /= ctx->nth;
+            dc->pipeline.my_offset += dc->pipeline.my_count * dt_size * ctx->idx;
+
+            CTX_LOG("count total %zu my count %zu offset %zu\n", lsync->count_total, dc->pipeline.my_count, dc->pipeline.my_offset);
 
             // dpu_signal_comp_thread(ctx, thread_main_sync);
-            // while (hc->pipeline.count_serviced < hc->pipeline.my_count) {
-            //     dpu_hc_progress_allreduce(ctx->hc, lsync, ctx);
-            // }
-            // dpu_hc_issue_hangup(ctx->hc, lsync, ctx);
+            while (dc->pipeline.count_serviced < dc->pipeline.my_count) {
+                dpu_hc_progress_allreduce(ctx->dc, lsync, ctx);
+            }
+            dpu_hc_issue_hangup(ctx->dc, lsync, ctx);
 
-            // CTX_LOG("Waiting for worker threads to complete coll id: %u, type: %d\n",
-            //         coll_id, coll_type);
+            CTX_LOG("Waiting for worker threads to complete coll id: %u, type: %d\n",
+                    coll_id, coll_type);
             // dpu_waitfor_comp_thread(ctx, thread_main_sync);
 
             CTX_LOG("Waiting for all ranks to complete coll id: %u, type: %d\n",
                     coll_id, coll_type);
             dpu_coll_do_barrier(ctx, lsync);
 
-            dpu_mark_coll_done(ctx, lsync);
+            if (ctx->idx == 0) {
+                dpu_waitfor_comp_thread(ctx, thread_main_sync);
+                dpu_mark_coll_done(ctx, lsync);
+                dpu_signal_comp_thread(ctx, thread_main_sync);
+            } else {
+                // dpu_waitfor_master_thread(ctx);
+                dpu_signal_comm_thread(ctx, thread_main_sync);
+                dpu_waitfor_comm_thread(ctx, thread_main_sync);
+            }
             CTX_LOG("End coll id: %u, type: %d, count total: %lu, count serviced: %zu\n",
                     coll_id, coll_type, count_total, (size_t)ctx->coll_sync->count_serviced);
 
@@ -849,6 +875,7 @@ int main(int argc, char **argv)
     for (int i=0; i<num_threads; i++) {
         thread_ctx_t *ctx = &comm_ctx[i];
         ctx->idx = i,
+        ctx->nth = num_threads,
         ctx->hc = &hc,
         ctx->coll_sync = &coll_sync,
         ctx->comm = &comm,

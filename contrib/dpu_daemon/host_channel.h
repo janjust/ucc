@@ -228,6 +228,7 @@ int dpu_hc_finalize(dpu_hc_t *dpu_hc);
 typedef struct thread_ctx_t {
     pthread_t       id;
     int             idx;
+    int             nth;
     dpu_ucc_comm_t  *comm;
     dpu_hc_t        *hc;
     dpu_hc_t        *dc;
@@ -247,13 +248,13 @@ extern thread_sync_t *thread_sub_sync;
 
 ucs_status_t dpu_hc_issue_get(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *stage, dpu_buf_t *getbuf, thread_ctx_t *ctx);
 ucs_status_t dpu_hc_issue_put(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *stage, dpu_buf_t *accbuf, thread_ctx_t *ctx);
-ucs_status_t dpu_hc_issue_allreduce(dpu_hc_t *hc, thread_ctx_t *ctx, dpu_stage_t *stage, dpu_buf_t *accbuf, dpu_buf_t *getbuf);
+ucs_status_t dpu_hc_issue_allreduce(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_ctx_t *ctx, dpu_stage_t *stage, dpu_buf_t *accbuf, dpu_buf_t *getbuf);
 ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_ctx_t *ctx);
 ucs_status_t dpu_hc_issue_hangup(dpu_hc_t *dpu_hc, dpu_put_sync_t *sync, thread_ctx_t *ctx);
 ucs_status_t dpu_send_init_completion(dpu_hc_t *hc);
 
 size_t dpu_ucc_dt_size(ucc_datatype_t dt);
-int dpu_dc_create(dpu_hc_t *hc, dpu_hc_t *dc);
+int dpu_dc_create(thread_ctx_t *ctx, dpu_hc_t *hc, dpu_hc_t *dc);
 
 void dpu_waitfor_comm_thread(thread_ctx_t *ctx, thread_sync_t *sync);
 void dpu_signal_comm_thread(thread_ctx_t *ctx, thread_sync_t *sync);

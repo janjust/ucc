@@ -232,7 +232,7 @@ static int _dpu_hc_buffer_alloc(dpu_hc_t *hc, dpu_mem_t *mem, size_t size)
     int ret = UCC_OK;
 
     memset(mem, 0, sizeof(*mem));
-    mem->base = calloc(size, 1);
+    mem->base = aligned_alloc(4096, size);
     if (mem->base == NULL) {
         fprintf(stderr, "failed to allocate %lu bytes base %p\n", size, mem->base);
         ret = UCC_ERR_NO_MEMORY;
@@ -269,6 +269,7 @@ static int _dpu_hc_buffer_alloc(dpu_hc_t *hc, dpu_mem_t *mem, size_t size)
     assert(mem_attr.length >= mem_params.length);
     assert(mem_attr.address == mem_params.address);
 
+    DPU_LOG("%p %p %p %p\n", hc->ucp_ctx, mem->memh, &mem->rkey.rkey_addr, &mem->rkey.rkey_addr_len);
     status = ucp_rkey_pack(hc->ucp_ctx, mem->memh,
                            &mem->rkey.rkey_addr,
                            &mem->rkey.rkey_addr_len);
@@ -660,12 +661,12 @@ err:
     return ret;
 }
 
-int dpu_dc_create(dpu_hc_t *hc, dpu_hc_t *dc)
+int dpu_dc_create(thread_ctx_t *ctx, dpu_hc_t *hc, dpu_hc_t *dc)
 {
     int ret;
     memcpy(dc, hc, sizeof(dpu_hc_t));
 
-    DPU_LOG("Creating Data channel\n");
+    CTX_LOG("Creating Data channel\n");
     ret = _dpu_ucx_init(dc);
     if (ret) {
         goto err_ucx;
@@ -838,7 +839,7 @@ ucs_status_t dpu_hc_issue_put(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
     return UCS_OK;
 }
 
-ucs_status_t dpu_hc_issue_allreduce(dpu_hc_t *hc, thread_ctx_t *ctx, dpu_stage_t *stage, dpu_buf_t *accbuf, dpu_buf_t *getbuf)
+ucs_status_t dpu_hc_issue_allreduce(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_ctx_t *ctx, dpu_stage_t *stage, dpu_buf_t *accbuf, dpu_buf_t *getbuf)
 {
     assert(stage->phase == REDUCE);
     assert(accbuf->state == IDLE && accbuf->ucp_req == NULL);
@@ -850,8 +851,13 @@ ucs_status_t dpu_hc_issue_allreduce(dpu_hc_t *hc, thread_ctx_t *ctx, dpu_stage_t
     thread_sub_sync->accbuf = accbuf;
     thread_sub_sync->getbuf = getbuf;
 
+    ucc_datatype_t dtype = sync->coll_args.src.info.datatype;
+    ucc_reduction_op_t op = sync->coll_args.op;
+
     DPU_LOG("Issue AR accbuf %p getbuf %p count %lu\n", accbuf->buf, getbuf->buf, accbuf->count);
-    dpu_signal_comp_thread(ctx, thread_sub_sync);
+    // dpu_signal_comp_thread(ctx, thread_sub_sync);
+    ucc_mc_reduce_multi(accbuf->buf, getbuf->buf, accbuf->buf,
+                        1, accbuf->count, 0, dtype, op, UCC_MEMORY_TYPE_HOST);
     return UCS_OK;
 }
 
@@ -865,12 +871,12 @@ ucs_status_t dpu_hc_issue_hangup(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_ctx_
 
 ucc_status_t dpu_check_comp_status(thread_ctx_t *ctx, thread_sync_t *sync)
 {
-    if(!sync->accbuf || !sync->getbuf) {
-        return UCC_ERR_INVALID_PARAM;
-    }
-    if (!sync->done) {
-        return UCC_INPROGRESS;
-    }
+    // if(!sync->accbuf || !sync->getbuf) {
+    //     return UCC_ERR_INVALID_PARAM;
+    // }
+    // if (!sync->done) {
+    //     return UCC_INPROGRESS;
+    // }
     return UCC_OK;
 }
 
@@ -947,7 +953,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
         }
         if (getbuf->state == IDLE && accbuf->state == IDLE) {
             assert(stage->done_get > stage->done_red);
-            dpu_hc_issue_allreduce(hc, ctx, stage, accbuf, getbuf);
+            dpu_hc_issue_allreduce(hc, sync, ctx, stage, accbuf, getbuf);
             /* Swap Reduce and Get buffers */
             stage->red_idx = stage->get_idx;
             stage->get_idx = (stage->get_idx + 1) % 2;
