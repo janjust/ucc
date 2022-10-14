@@ -169,23 +169,24 @@ static ucs_status_t _dpu_worker_flush(dpu_hc_t *hc)
     return _dpu_request_wait(hc->ucp_worker, request);
 }
 
-static int _dpu_ucx_init(dpu_hc_t *hc)
+static int _dpu_ucx_init(dpu_hc_t *hc, int create_ctx)
 {
-    ucp_params_t ucp_params;
     ucs_status_t status;
     ucp_worker_params_t worker_params;
     int ret = UCC_OK;
 
-    memset(&ucp_params, 0, sizeof(ucp_params));
-    ucp_params.field_mask = UCP_PARAM_FIELD_FEATURES;
-    ucp_params.features = UCP_FEATURE_TAG |
-                          UCP_FEATURE_RMA;
+    if (create_ctx) {
+        ucp_params_t ucp_params = {0};
+        ucp_params.field_mask = UCP_PARAM_FIELD_FEATURES;
+        ucp_params.features   = UCP_FEATURE_TAG |
+                                UCP_FEATURE_RMA;
 
-    status = ucp_init(&ucp_params, NULL, &hc->ucp_ctx);
-    if (status != UCS_OK) {
-        fprintf(stderr, "failed to ucp_init(%s)\n", ucs_status_string(status));
-        ret = UCC_ERR_NO_MESSAGE;
-        goto err;
+        status = ucp_init(&ucp_params, NULL, &hc->ucp_ctx);
+        if (status != UCS_OK) {
+            fprintf(stderr, "failed to ucp_init(%s)\n", ucs_status_string(status));
+            ret = UCC_ERR_NO_MESSAGE;
+            goto err;
+        }
     }
 
     memset(&worker_params, 0, sizeof(worker_params));
@@ -218,10 +219,12 @@ err:
     return ret;
 }
 
-static int _dpu_ucx_fini(dpu_hc_t *hc){
+static int _dpu_ucx_fini(dpu_hc_t *hc, int cleanup_ctx){
     ucp_worker_release_address(hc->ucp_worker, hc->worker_attr.address);
     ucp_worker_destroy(hc->ucp_worker);
-    ucp_cleanup(hc->ucp_ctx);
+    if (cleanup_ctx) {
+        ucp_cleanup(hc->ucp_ctx);
+    }
 }
 
 static int _dpu_hc_buffer_alloc(dpu_hc_t *hc, dpu_mem_t *mem, size_t size)
@@ -269,7 +272,6 @@ static int _dpu_hc_buffer_alloc(dpu_hc_t *hc, dpu_mem_t *mem, size_t size)
     assert(mem_attr.length >= mem_params.length);
     assert(mem_attr.address == mem_params.address);
 
-    DPU_LOG("%p %p %p %p\n", hc->ucp_ctx, mem->memh, &mem->rkey.rkey_addr, &mem->rkey.rkey_addr_len);
     status = ucp_rkey_pack(hc->ucp_ctx, mem->memh,
                            &mem->rkey.rkey_addr,
                            &mem->rkey.rkey_addr_len);
@@ -474,10 +476,10 @@ static ucs_status_t _dpu_create_remote_host_eps(dpu_hc_t *hc, dpu_ucc_comm_t *co
         }
     }
 
-    hc->host_rkeys = calloc(hc->world_size, sizeof(host_rkey_t));
-    hc->host_src_rkeys = calloc(hc->world_size, sizeof(ucp_rkey_h));
-    hc->host_dst_rkeys = calloc(hc->world_size, sizeof(ucp_rkey_h));
-    hc->world_lsyncs = calloc(hc->world_size, sizeof(dpu_put_sync_t));
+    hc->host_rkeys      = calloc(hc->world_size, sizeof(host_rkey_t));
+    hc->host_src_rkeys  = calloc(hc->world_size, sizeof(ucp_rkey_h));
+    hc->host_dst_rkeys  = calloc(hc->world_size, sizeof(ucp_rkey_h));
+    hc->world_lsyncs    = calloc(hc->world_size, sizeof(dpu_put_sync_t));
     
     memset(&hc->req_param, 0, sizeof(hc->req_param));
     // hc->req_param.op_attr_mask = UCP_OP_ATTR_FLAG_NO_IMM_CMPL;
@@ -547,8 +549,8 @@ int dpu_hc_accept_job(dpu_hc_t *hc)
     int ret;
     hc->job_id++;
 
-    /* init ucx worker */
-    ret = _dpu_ucx_init(hc);
+    /* init ucx ctx and worker */
+    ret = _dpu_ucx_init(hc, 1);
     if (ret) {
         goto err_ucx;
     }
@@ -636,7 +638,7 @@ int dpu_hc_accept_job(dpu_hc_t *hc)
 err:
     close(hc->connfd);
 err_ucx:
-    _dpu_ucx_fini(hc);
+    _dpu_ucx_fini(hc, 1);
 out:
     return ret;
 }
@@ -667,21 +669,24 @@ int dpu_dc_create(thread_ctx_t *ctx, dpu_hc_t *hc, dpu_hc_t *dc)
     memcpy(dc, hc, sizeof(dpu_hc_t));
 
     CTX_LOG("Creating Data channel\n");
-    ret = _dpu_ucx_init(dc);
+    ret = _dpu_ucx_init(dc, 1);
     if (ret) {
         goto err_ucx;
     }
 
-    ret = _dpu_hc_init_pipeline(hc);
+    ret = _dpu_hc_init_pipeline(dc);
     if (ret) {
-        fprintf(stderr, "init pipeline failed!\n");
+        fprintf(stderr, "DC init pipeline failed!\n");
         goto err_ucx;
     }
 
+    CTX_LOG("Created Data channel with rank %d size %d\n",
+            dc->world_rank, dc->world_size);
+    
     ret = 0;
     goto out;
 err_ucx:
-    _dpu_ucx_fini(dc);
+    _dpu_ucx_fini(dc, 1);
 out:
     return ret;
 }
@@ -792,8 +797,8 @@ ucs_status_t dpu_hc_issue_get(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
     void *src_addr = hc->host_rkeys[ep_src_rank].src_buf + get_offset;
     void *dst_addr = getbuf->buf;
 
-    DPU_LOG("Issue Get from %d offset %lu src %p dst %p count %lu bytes %lu host_team_size: %d \n",
-            src_rank, get_offset, src_addr, dst_addr, count, data_size, host_team_size);
+    CTX_LOG("Issue Get from %d offset %lu src %p dst %p count %lu bytes %lu host_team_size: %d \n",
+            ep_src_rank, get_offset, src_addr, dst_addr, count, data_size, host_team_size);
     
     ucp_worker_fence(hc->ucp_worker);
     getbuf->ucp_req =
@@ -823,12 +828,12 @@ ucs_status_t dpu_hc_issue_put(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
     void *src_addr = accbuf->buf;
     void *dst_addr = hc->host_rkeys[ep_dst_rank].dst_buf + put_offset;
 
-    DPU_LOG("Issue Put to %d offset %lu src %p dst %p count %lu bytes %lu host_team_size: %d\n",
+    CTX_LOG("Issue Put to %d offset %lu src %p dst %p count %lu bytes %lu host_team_size: %d\n",
             dst_rank, put_offset, src_addr, dst_addr, count, data_size, host_team_size);
     assert(count > 0 && dt_size > 0 && accbuf->ucp_req == NULL);
 
     int32_t *pbuf = accbuf->buf;
-    DPU_LOG("## PUT DATA %ld %ld\n", pbuf[0], pbuf[1]);
+    CTX_LOG("## PUT DATA %ld %ld\n", pbuf[0], pbuf[2]);
     
     ucp_worker_fence(hc->ucp_worker);
     accbuf->ucp_req =
@@ -848,24 +853,22 @@ ucs_status_t dpu_hc_issue_allreduce(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_c
 
     accbuf->state = REDUCING;
     getbuf->state = REDUCING;
-    thread_sub_sync->accbuf = accbuf;
-    thread_sub_sync->getbuf = getbuf;
+    // thread_sub_sync->accbuf = accbuf;
+    // thread_sub_sync->getbuf = getbuf;
 
     ucc_datatype_t dtype = sync->coll_args.src.info.datatype;
     ucc_reduction_op_t op = sync->coll_args.op;
 
-    DPU_LOG("Issue AR accbuf %p getbuf %p count %lu\n", accbuf->buf, getbuf->buf, accbuf->count);
+    CTX_LOG("Issue AR accbuf %p getbuf %p count %lu\n", accbuf->buf, getbuf->buf, accbuf->count);
     // dpu_signal_comp_thread(ctx, thread_sub_sync);
     ucc_mc_reduce_multi(accbuf->buf, getbuf->buf, accbuf->buf,
                         1, accbuf->count, 0, dtype, op, UCC_MEMORY_TYPE_HOST);
-    return UCS_OK;
-}
+    
+    int32_t *gbuf = getbuf->buf;
+    CTX_LOG("## GET DATA %ld %ld\n", gbuf[0], gbuf[2]);
 
-ucs_status_t dpu_hc_issue_hangup(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_ctx_t *ctx)
-{
-    thread_sub_sync->accbuf = NULL;
-    thread_sub_sync->getbuf = NULL;
-    dpu_signal_comp_thread(ctx, thread_sub_sync);
+    int32_t *abuf = accbuf->buf;
+    CTX_LOG("## ACC DATA %ld %ld\n", abuf[0], abuf[2]);
     return UCS_OK;
 }
 
@@ -893,7 +896,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
     assert(host_team_size >= 1);
     int read_completed = 0;
 
-    for (i=0; i<1; i++) {
+    for (i=0; i<10; i++) {
         if (ucp_worker_progress(hc->ucp_worker)) {
             break;
         }
@@ -1058,7 +1061,7 @@ int dpu_hc_reset_job(dpu_hc_t *hc)
     _dpu_hc_buffer_free(hc, &hc->mem_segs.out);
     _dpu_hc_buffer_free(hc, &hc->mem_segs.sync);
     _dpu_close_host_eps(hc);
-    _dpu_ucx_fini(hc);
+    _dpu_ucx_fini(hc, 1);
     printf("# Completed Job Id %d\n", hc->job_id);
     return UCC_OK;
 }

@@ -53,7 +53,7 @@ do {                                                        \
 
 #define CTX_LOG(_fmt, ...)                                          \
 do {                                                                \
-    fprintf(stderr, "[%d] %s:%d:%s(): " _fmt,                       \
+    fprintf(stderr, "[T%d] %s:%d:%s(): " _fmt,                       \
             ctx->idx, __FILE__, __LINE__, __func__, ##__VA_ARGS__); \
     fflush(stderr);                                                 \
 } while (0)
@@ -237,8 +237,8 @@ typedef struct thread_ctx_t {
 
 /* thread accisble data - split reader/writer */
 typedef struct thread_sync_t {
-    volatile unsigned int todo;
-    volatile unsigned int done;
+    volatile unsigned int todo[8];
+    volatile unsigned int done[8];
     volatile dpu_buf_t *accbuf;
     volatile dpu_buf_t *getbuf;
 } thread_sync_t;
