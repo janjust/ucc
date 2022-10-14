@@ -37,6 +37,16 @@ size_t dpu_ucc_dt_size(ucc_datatype_t dt)
     return 0;
 }
 
+/* TODO: export ucc_mc.h */
+ucc_status_t ucc_mc_reduce(const void *src1, const void *src2, void *dst,
+                           size_t count, ucc_datatype_t dtype,
+                           ucc_reduction_op_t op, ucc_memory_type_t mem_type);
+
+ucc_status_t ucc_mc_reduce_multi(void *src1, void *src2, void *dst, size_t n_vectors,
+                    size_t count, size_t stride, ucc_datatype_t dtype,
+                    ucc_reduction_op_t op, ucc_memory_type_t mem_type);
+
+
 static int _dpu_host_to_ip(dpu_hc_t *hc)
 {
 //     printf ("%s\n", __FUNCTION__);
@@ -331,6 +341,8 @@ static  int _dpu_hc_init_pipeline(dpu_hc_t *hc)
 {
     int i, ret;
 
+    DPU_LOG("Init pipeline with %zu buffers with size %zu\n",
+            hc->pipeline.num_buffers, hc->pipeline.buffer_size);
     assert(hc->pipeline.buffer_size > 0);
     assert(hc->pipeline.num_buffers > 0);
 
@@ -442,15 +454,18 @@ static ucs_status_t _dpu_create_remote_host_eps(dpu_hc_t *hc, dpu_ucc_comm_t *co
     ucs_status_t status;
     ucp_ep_params_t ep_params;
     int i;
-    // void *remote_addrs = NULL;
     size_t rem_worker_addr_len = hc->rem_worker_addr_len;
     void *rem_worker_addr = hc->rem_worker_addr;
+
+    DPU_LOG("Creating %u remote host eps, addr len %lu\n", hc->world_size, hc->rem_worker_addr_len);
 
     /* Allgather Host EP addresses */
     hc->host_eps = calloc(hc->world_size, sizeof(ucp_ep_h));
     if (collect_addrs) {
         hc->remote_addrs = calloc(hc->world_size, rem_worker_addr_len);
         dpu_coll_collect_host_addrs(comm, rem_worker_addr, rem_worker_addr_len, hc->remote_addrs);
+    } else {
+        assert(hc->remote_addrs != NULL);
     }
 
     ep_params.field_mask    = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS |
@@ -725,7 +740,7 @@ int dpu_hc_reply(dpu_hc_t *hc, dpu_get_sync_t *coll_sync)
 
     assert(hc->pipeline.sync_req == NULL);
     ucp_worker_fence(hc->ucp_worker);
-    DPU_LOG("Notify host completed coll_id: %d, serviced: %lu\n",
+    DPU_LOG("Notify host completed coll_id: %u, serviced: %u\n",
             coll_sync->coll_id, coll_sync->count_serviced);
     hc->pipeline.sync_req = ucp_tag_send_nbx(hc->localhost_ep,
             coll_sync, sizeof(dpu_get_sync_t), req_tag, &hc->req_param);
@@ -784,7 +799,7 @@ ucs_status_t dpu_hc_issue_get(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
     size_t count = DPU_MIN(hc->pipeline.buffer_size/dt_size, remaining_elems);
     size_t get_offset = hc->pipeline.my_offset + hc->pipeline.count_received * dt_size;
     int src_rank = stage->src_rank;
-    int ep_src_rank  = dpu_get_host_ep_rank(hc, src_rank, sync->team_id, ctx);
+    int ep_src_rank = dpu_get_host_ep_rank(hc, src_rank, sync->team_id, ctx);
     getbuf->count = count;
 
     assert(src_rank < host_team_size);
@@ -805,6 +820,11 @@ ucs_status_t dpu_hc_issue_get(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
             ucp_get_nbx(hc->host_eps[ep_src_rank], dst_addr, data_size,
             (uint64_t)src_addr, hc->host_src_rkeys[ep_src_rank], &hc->req_param);
     
+    // ucs_status_t status = _dpu_request_wait(hc->ucp_worker, getbuf->ucp_req);
+    // assert (status == UCS_OK);
+    // int32_t *gbuf = getbuf->buf;
+    // CTX_LOG("## GOT DATA %ld %ld\n", gbuf[0], gbuf[2]);
+
     stage->src_rank = (src_rank + 1) % host_team_size;
     return UCS_OK;
 }
@@ -820,7 +840,7 @@ ucs_status_t dpu_hc_issue_put(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
     size_t count = accbuf->count;
     size_t put_offset = hc->pipeline.my_offset + hc->pipeline.count_serviced * dt_size;
     int dst_rank = stage->dst_rank;
-    int ep_dst_rank  = dpu_get_host_ep_rank(hc, dst_rank, sync->team_id, ctx);
+    int ep_dst_rank = dpu_get_host_ep_rank(hc, dst_rank, sync->team_id, ctx);
 
     assert(dst_rank < host_team_size);
 
@@ -833,7 +853,7 @@ ucs_status_t dpu_hc_issue_put(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
     assert(count > 0 && dt_size > 0 && accbuf->ucp_req == NULL);
 
     int32_t *pbuf = accbuf->buf;
-    CTX_LOG("## PUT DATA %ld %ld\n", pbuf[0], pbuf[2]);
+    CTX_LOG("## PUT DATA %d %d\n", pbuf[0], pbuf[2]);
     
     ucp_worker_fence(hc->ucp_worker);
     accbuf->ucp_req =
@@ -859,16 +879,17 @@ ucs_status_t dpu_hc_issue_allreduce(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_c
     ucc_datatype_t dtype = sync->coll_args.src.info.datatype;
     ucc_reduction_op_t op = sync->coll_args.op;
 
+    ucp_worker_fence(hc->ucp_worker);
     CTX_LOG("Issue AR accbuf %p getbuf %p count %lu\n", accbuf->buf, getbuf->buf, accbuf->count);
     // dpu_signal_comp_thread(ctx, thread_sub_sync);
     ucc_mc_reduce_multi(accbuf->buf, getbuf->buf, accbuf->buf,
                         1, accbuf->count, 0, dtype, op, UCC_MEMORY_TYPE_HOST);
     
     int32_t *gbuf = getbuf->buf;
-    CTX_LOG("## GET DATA %ld %ld\n", gbuf[0], gbuf[2]);
+    CTX_LOG("## GET DATA %d %d\n", gbuf[0], gbuf[2]);
 
     int32_t *abuf = accbuf->buf;
-    CTX_LOG("## ACC DATA %ld %ld\n", abuf[0], abuf[2]);
+    CTX_LOG("## ACC DATA %d %d\n", abuf[0], abuf[2]);
     return UCS_OK;
 }
 

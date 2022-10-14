@@ -55,15 +55,6 @@ static void dpu_coll_print_summary(void)
     printf("\n");
 }
 
-/* TODO: export ucc_mc.h */
-ucc_status_t ucc_mc_reduce(const void *src1, const void *src2, void *dst,
-                           size_t count, ucc_datatype_t dtype,
-                           ucc_reduction_op_t op, ucc_memory_type_t mem_type);
-
-ucc_status_t ucc_mc_reduce_multi(void *src1, void *src2, void *dst, size_t n_vectors,
-                    size_t count, size_t stride, ucc_datatype_t dtype,
-                    ucc_reduction_op_t op, ucc_memory_type_t mem_type);
-
 /* TODO: include ucc_coll_utils.h */
 static inline size_t
 ucc_coll_args_get_count(const ucc_coll_args_t *args, const ucc_count_t *counts,
@@ -137,7 +128,7 @@ static ucc_status_t dpu_coll_do_blocking_alltoall(thread_ctx_t *ctx, dpu_put_syn
     ucc_datatype_t dtype = lsync->coll_args.src.info.datatype;
     size_t dt_size       = dpu_ucc_dt_size(dtype);
 
-    CTX_LOG("Doing alltoall on team id %d team size %d count %lu\n", lsync->team_id, team_size, count_total);
+    CTX_LOG("Doing alltoall on team id %u team size %lu count %lu\n", lsync->team_id, team_size, count_total);
 
     for(int i = 0; i < team_size; i++) {
         int src_rank = (team_rank + i) % team_size;
@@ -155,7 +146,7 @@ static ucc_status_t dpu_coll_do_blocking_alltoall(thread_ctx_t *ctx, dpu_put_syn
             void * tmp_addr  = hc->pipeline.stages[0].accbuf.buf;
             void * dst_addr  = lsync->rkeys.dst_buf + dst_offset;
 
-            DPU_LOG("Issue Get from %d src offset %lu count %lu bytes %lu\n",
+            DPU_LOG("Issue Get from %d src offset %zu count %zu bytes %zu\n",
                     src_rank, src_offset, my_count, bytes_step);
             ucp_worker_fence(hc->ucp_worker);
             ucp_req = ucp_get_nbx(
@@ -166,7 +157,7 @@ static ucc_status_t dpu_coll_do_blocking_alltoall(thread_ctx_t *ctx, dpu_put_syn
                 return UCC_ERR_NO_RESOURCE;
             }
 
-            DPU_LOG("Issue Put to host dst offset %lu dst offset %lu count %lu bytes %lu\n",
+            DPU_LOG("Issue Put to localhost dst offset %zu count %zu bytes %zu\n",
                     dst_offset, my_count, bytes_step);
             ucp_worker_fence(hc->ucp_worker);
             ucp_req = ucp_put_nbx(
@@ -196,7 +187,7 @@ static ucc_status_t dpu_coll_do_blocking_alltoallv(thread_ctx_t *ctx, dpu_put_sy
     UCC_CHECK(ucc_team_get_size(team, (uint32_t*)&team_size));
     UCC_CHECK(ucc_team_get_my_ep(team, (uint64_t*)&team_rank));
 
-    CTX_LOG("Doing alltoallv on team id %d team size %d\n", lsync->team_id, team_size);
+    CTX_LOG("Doing alltoallv on team id %u team size %u\n", lsync->team_id, team_size);
 
     for(int i = 0; i < team_size; i++) {
         int src_rank = (team_rank + i) % team_size;
@@ -213,7 +204,7 @@ static ucc_status_t dpu_coll_do_blocking_alltoallv(thread_ctx_t *ctx, dpu_put_sy
         size_t sdt_size      = dpu_ucc_dt_size(sdt);
         size_t rdt_size      = dpu_ucc_dt_size(rdt);
 
-        CTX_LOG("src rank %d count %d displ %d dtsize %d dst rank %d count %d displ %d dtsize %d\n",
+        CTX_LOG("src rank %d count %zu displ %zu dtsize %zu dst rank %d count %zu displ %zu dtsize %zu\n",
                 src_rank,  src_count, src_displ, sdt_size,
                 team_rank, dst_count, dst_displ, rdt_size);
 
@@ -229,14 +220,14 @@ static ucc_status_t dpu_coll_do_blocking_alltoallv(thread_ctx_t *ctx, dpu_put_sy
             size_t count_step = DPU_MIN(hc->pipeline.buffer_size/sdt_size, remaining_elems);
             size_t bytes_step = count_step * sdt_size;
 
-            DPU_LOG("Element count %lu done %lu remaining %lu this step %lu\n",
+            DPU_LOG("Element count %zu done %zu remaining %zu this step %zu\n",
                     src_count, count_done, remaining_elems, count_step);
 
             void * src_addr  = hc->host_rkeys[src_rank].src_buf + src_offset;
             void * tmp_addr  = hc->pipeline.stages[0].accbuf.buf;
             void * dst_addr  = lsync->rkeys.dst_buf + dst_offset;
 
-            DPU_LOG("Issue Get from %d src offset %lu count %lu bytes %lu\n",
+            DPU_LOG("Issue Get from %d src offset %zu count %zu bytes %zu\n",
                     src_rank, src_offset, src_count, bytes_step);
             ucp_worker_fence(hc->ucp_worker);
             ucp_req = ucp_get_nbx(
@@ -247,7 +238,7 @@ static ucc_status_t dpu_coll_do_blocking_alltoallv(thread_ctx_t *ctx, dpu_put_sy
                 return UCC_ERR_NO_RESOURCE;
             }
 
-            DPU_LOG("Issue Put to host dst offset %lu count %lu bytes %lu\n",
+            DPU_LOG("Issue Put to localhost dst offset %zu count %zu bytes %zu\n",
                     dst_offset, dst_count, bytes_step);
             ucp_worker_fence(hc->ucp_worker);
             ucp_req = ucp_put_nbx(
@@ -269,7 +260,7 @@ static ucc_status_t dpu_coll_do_blocking_alltoallv(thread_ctx_t *ctx, dpu_put_sy
 
 static void dpu_coll_collect_host_rkeys(thread_ctx_t *ctx, dpu_hc_t *hc, dpu_put_sync_t *lsync)
 {
-    CTX_LOG("Collecting Host rkeys on team id %d\n", lsync->team_id);
+    CTX_LOG("Collecting Host rkeys on team id %u\n", lsync->team_id);
 
     int i, ep_rank;
     ucs_status_t status;
@@ -303,7 +294,7 @@ static void dpu_coll_collect_host_rkeys(thread_ctx_t *ctx, dpu_hc_t *hc, dpu_put
         },
     };
 
-    CTX_LOG("Issue Allgather from ranks %d src %p dst %p bytes %lu\n",
+    CTX_LOG("Issue Allgather from ranks %d src %p dst %p bytes %zu\n",
             team_size, src_buf, dst_buf, sizeof(host_rkey_t));
     UCC_CHECK(ucc_collective_init(&coll, &request, team));
     UCC_CHECK(ucc_collective_post(request));
@@ -334,6 +325,36 @@ static void dpu_coll_collect_host_rkeys(thread_ctx_t *ctx, dpu_hc_t *hc, dpu_put
     hc->rail = lsync->rail;
     hc->dpu_per_node_cnt = lsync->dpu_per_node_cnt;
     assert(hc->dpu_per_node_cnt > 0 && hc->rail >= 0 && hc->rail < hc->dpu_per_node_cnt);
+}
+
+static void dpu_import_dc_rkeys(thread_ctx_t *ctx, dpu_hc_t *_hc, dpu_hc_t *dc, dpu_put_sync_t *lsync)
+{
+    int i, ep_rank;
+    ucs_status_t status;
+    ucc_coll_req_h request;
+    ucc_team_h team = ctx->comm->team_pool[lsync->team_id];
+    ucc_rank_t team_size = 0;
+    UCC_CHECK(ucc_team_get_size(team, &team_size));
+
+    dc->world_lsyncs = _hc->world_lsyncs;
+    memset(dc->host_rkeys, 0, sizeof(host_rkey_t) * dc->world_size);
+
+    for (i = 0; i < team_size; i++) {
+        ep_rank  = dpu_get_world_rank(dc, i, lsync->team_id, ctx);
+        memcpy(&dc->host_rkeys[ep_rank], &dc->world_lsyncs[i].rkeys, sizeof(host_rkey_t));
+        status = ucp_ep_rkey_unpack(dc->host_eps[ep_rank], (void*)dc->host_rkeys[ep_rank].src_rkey_buf, &dc->host_src_rkeys[ep_rank]);
+        assert(UCS_OK == status);
+        assert(NULL != dc->host_rkeys[ep_rank].src_buf);
+        status = ucp_ep_rkey_unpack(dc->host_eps[ep_rank], (void*)dc->host_rkeys[ep_rank].dst_rkey_buf, &dc->host_dst_rkeys[ep_rank]);
+        assert(UCS_OK == status);
+        assert(NULL != dc->host_rkeys[ep_rank].dst_buf);
+        CTX_LOG("Rank %d with EP Rank %d  team_id  %d src buf %p dst buf %p\n", 
+                i, ep_rank, lsync->team_id, dc->host_rkeys[ep_rank].src_buf, dc->host_rkeys[ep_rank].dst_buf);
+    }
+
+    dc->rail = lsync->rail;
+    dc->dpu_per_node_cnt = lsync->dpu_per_node_cnt;
+    assert(dc->dpu_per_node_cnt > 0 && dc->rail >= 0 && dc->rail < dc->dpu_per_node_cnt);
 }
 
 void dpu_coll_do_barrier(thread_ctx_t *ctx, dpu_put_sync_t *lsync)
@@ -575,11 +596,16 @@ void *dpu_comm_thread(void *arg)
         }
 
         else if (coll_type == UCC_COLL_TYPE_ALLREDUCE) {
-            dpu_coll_collect_host_rkeys(ctx, dc, lsync);
             ucc_team_h team = ctx->comm->team_pool[lsync->team_id];
             assert(team != NULL);
             UCC_CHECK(ucc_team_get_size(team, &dpu_team_size));
             UCC_CHECK(ucc_team_get_my_ep(team, &dpu_team_rank));
+
+            if (ctx->idx == 0) {
+                dpu_coll_collect_host_rkeys(ctx, hc, lsync);
+            }
+            pthread_barrier_wait(&sync_barrier);
+            dpu_import_dc_rkeys(ctx, hc, dc, lsync);
  
             ucc_datatype_t dtype = lsync->coll_args.src.info.datatype;
             size_t dt_size = dpu_ucc_dt_size(dtype);
@@ -592,14 +618,14 @@ void *dpu_comm_thread(void *arg)
             /* Adjust count and offset for thread id */
             dc->pipeline.my_count /= ctx->nth;
             dc->pipeline.my_offset += dc->pipeline.my_count * dt_size * ctx->idx;
-            CTX_LOG("count total %zu my count %zu offset %zu\n",
+            CTX_LOG("count total %u my count %zu offset %zu\n",
                     lsync->count_total, dc->pipeline.my_count, dc->pipeline.my_offset);
 
             while (dc->pipeline.count_serviced < dc->pipeline.my_count) {
                 dpu_hc_progress_allreduce(dc, lsync, ctx);
             }
 
-            CTX_LOG("count total %zu my count %zu offset %zu serviced %zu\n",
+            CTX_LOG("count total %u my count %zu offset %zu serviced %zu\n",
                     lsync->count_total, dc->pipeline.my_count,
                     dc->pipeline.my_offset, dc->pipeline.count_serviced);
 
@@ -609,12 +635,12 @@ void *dpu_comm_thread(void *arg)
                     coll_id, coll_type);
                 dpu_coll_do_barrier(ctx, lsync);
                 dpu_mark_coll_done(ctx, lsync);
+                dpu_coll_free_host_rkeys(ctx, hc, lsync);
             }
+            dpu_coll_free_host_rkeys(ctx, dc, lsync);
 
             CTX_LOG("End coll id: %u, type: %d, count total: %lu, count serviced: %zu\n",
                     coll_id, coll_type, count_total, (size_t)ctx->coll_sync->count_serviced);
-
-            dpu_coll_free_host_rkeys(ctx, dc, lsync);
         }
 
         else if (coll_type == UCC_COLL_TYPE_ALLTOALL) {
@@ -806,9 +832,9 @@ int main(int argc, char **argv)
         ctx->hc = &hc;
         ctx->coll_sync = &coll_sync;
         ctx->comm = &comm;
-        ctx->dc = &hc; //malloc(sizeof(dpu_hc_t));
-        // dpu_dc_create(ctx, ctx->hc, ctx->dc);
-        // dpu_hc_connect_remote_hosts(ctx->dc, &comm, 0);
+        ctx->dc = malloc(sizeof(dpu_hc_t));
+        dpu_dc_create(ctx, ctx->hc, ctx->dc);
+        dpu_hc_connect_remote_hosts(ctx->dc, &comm, 0);
         pthread_create(&ctx->id, NULL, dpu_comm_thread, ctx);
     }
     
@@ -822,8 +848,8 @@ int main(int argc, char **argv)
     
     for (int i=0; i<num_threads; i++) {
         thread_ctx_t *ctx = &comm_ctx[i];
-        // dpu_hc_reset_job(ctx->dc);
-        // free(ctx->dc);
+        dpu_hc_reset_job(ctx->dc);
+        free(ctx->dc);
     }
     dpu_hc_reset_job(&hc);
     dpu_hc_finalize(&hc);

@@ -175,10 +175,7 @@ typedef struct dpu_hc_t {
     ucp_worker_h ucp_worker;
     ucp_worker_attr_t worker_attr;
     ucp_request_param_t req_param;
-    union {
-        dpu_mem_segs_t mem_segs;
-        dpu_mem_t mem_segs_array[3];
-    };
+    dpu_mem_segs_t mem_segs;
 
     /* Remote UCX stuff */
     void *remote_addrs;

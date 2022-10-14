@@ -96,7 +96,7 @@ static int _dpu_master_listen(dpu_mc_t *mc)
         return UCC_ERR_NO_MESSAGE;
     }
 
-    DPU_LOG("DPU Master %lu listening on %s:%d\n", getpid(), mc->hname, mc->master_port);
+    DPU_LOG("DPU Master %d listening on %s:%d\n", getpid(), mc->hname, mc->master_port);
     /* creates an UN-named socket inside the kernel and returns
      * an integer known as socket descriptor
      * This function takes domain/family as its first argument.
@@ -167,7 +167,7 @@ static int _dpu_master_accept(dpu_mc_t *mc)
         ret = UCC_OK;
         mc->local_rank = local_rank;
         mc->server_port = mc->master_port + mc->local_rank + 1;
-        DPU_LOG("Recvd spawn request for local rank %lu\n", local_rank);
+        DPU_LOG("Recvd spawn request for local rank %u\n", local_rank);
     }
 
     return UCC_OK;
