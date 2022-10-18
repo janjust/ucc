@@ -179,29 +179,29 @@ static ucs_status_t _dpu_worker_flush(dpu_hc_t *hc)
     return _dpu_request_wait(hc->ucp_worker, request);
 }
 
-static int _dpu_ucx_init(dpu_hc_t *hc, int create_ctx)
+static int _dpu_ucx_init(dpu_hc_t *hc, int channel_type)
 {
     ucs_status_t status;
     ucp_worker_params_t worker_params;
     int ret = UCC_OK;
 
-    if (create_ctx) {
-        ucp_params_t ucp_params = {0};
-        ucp_params.field_mask = UCP_PARAM_FIELD_FEATURES;
-        ucp_params.features   = UCP_FEATURE_TAG |
-                                UCP_FEATURE_RMA;
-
-        status = ucp_init(&ucp_params, NULL, &hc->ucp_ctx);
-        if (status != UCS_OK) {
-            fprintf(stderr, "failed to ucp_init(%s)\n", ucs_status_string(status));
-            ret = UCC_ERR_NO_MESSAGE;
-            goto err;
-        }
+    ucp_params_t ucp_params = {0};
+    ucp_params.field_mask = UCP_PARAM_FIELD_FEATURES;
+    if (channel_type == 0) {    /* Data channel */
+        ucp_params.features = UCP_FEATURE_RMA;
+    } else {    /* Command channel */
+        ucp_params.features = UCP_FEATURE_TAG;
+    }
+    status = ucp_init(&ucp_params, NULL, &hc->ucp_ctx);
+    if (status != UCS_OK) {
+        fprintf(stderr, "failed to ucp_init(%s)\n", ucs_status_string(status));
+        ret = UCC_ERR_NO_MESSAGE;
+        goto err;
     }
 
     memset(&worker_params, 0, sizeof(worker_params));
-    worker_params.field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
-    worker_params.thread_mode = UCS_THREAD_MODE_MULTI;
+    // worker_params.field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
+    // worker_params.thread_mode = UCS_THREAD_MODE_MULTI;
 
     status = ucp_worker_create(hc->ucp_ctx, &worker_params, &hc->ucp_worker);
     if (status != UCS_OK) {
@@ -325,7 +325,7 @@ static void _dpu_hc_reset_stage(dpu_stage_t *stage, dpu_hc_t *hc)
     _dpu_hc_reset_buf(&stage->getbuf[1]);
 }
 
-static void _dpu_hc_reset_pipeline(dpu_hc_t *hc)
+int dpu_hc_reset_pipeline(dpu_hc_t *hc)
 {
     dpu_pipeline_t *pipe = &hc->pipeline;
     _dpu_hc_reset_stage(&pipe->stages[0], hc);
@@ -335,6 +335,7 @@ static void _dpu_hc_reset_pipeline(dpu_hc_t *hc)
 
     /* Kickstart */
     pipe->stages[0].phase = INIT;
+    return 0;
 }
 
 static  int _dpu_hc_init_pipeline(dpu_hc_t *hc)
@@ -367,7 +368,7 @@ static  int _dpu_hc_init_pipeline(dpu_hc_t *hc)
     hc->pipeline.stages[1].getbuf[0].buf = (char *)hc->mem_segs.out.base + hc->pipeline.buffer_size * 1;
     hc->pipeline.stages[1].getbuf[1].buf = (char *)hc->mem_segs.out.base + hc->pipeline.buffer_size * 2;
 
-    _dpu_hc_reset_pipeline(hc);
+    dpu_hc_reset_pipeline(hc);
     goto out;
 err_get:
     _dpu_hc_buffer_free(hc, &hc->mem_segs.out);
@@ -684,7 +685,7 @@ int dpu_dc_create(thread_ctx_t *ctx, dpu_hc_t *hc, dpu_hc_t *dc)
     memcpy(dc, hc, sizeof(dpu_hc_t));
 
     CTX_LOG("Creating Data channel\n");
-    ret = _dpu_ucx_init(dc, 1);
+    ret = _dpu_ucx_init(dc, 0);
     if (ret) {
         goto err_ucx;
     }
@@ -753,7 +754,7 @@ int dpu_hc_reply(dpu_hc_t *hc, dpu_get_sync_t *coll_sync)
 
     ucp_rkey_destroy(hc->src_rkey);
     ucp_rkey_destroy(hc->dst_rkey);
-    _dpu_hc_reset_pipeline(hc);
+    dpu_hc_reset_pipeline(hc);
     return 0;
 }
 
@@ -819,11 +820,6 @@ ucs_status_t dpu_hc_issue_get(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
     getbuf->ucp_req =
             ucp_get_nbx(hc->host_eps[ep_src_rank], dst_addr, data_size,
             (uint64_t)src_addr, hc->host_src_rkeys[ep_src_rank], &hc->req_param);
-    
-    // ucs_status_t status = _dpu_request_wait(hc->ucp_worker, getbuf->ucp_req);
-    // assert (status == UCS_OK);
-    // int32_t *gbuf = getbuf->buf;
-    // CTX_LOG("## GOT DATA %ld %ld\n", gbuf[0], gbuf[2]);
 
     stage->src_rank = (src_rank + 1) % host_team_size;
     return UCS_OK;

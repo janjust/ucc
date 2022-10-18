@@ -218,6 +218,7 @@ int dpu_hc_connect_localhost_ep(dpu_hc_t *hc);
 int dpu_hc_connect_remote_hosts(dpu_hc_t *hc, dpu_ucc_comm_t *comm, int collect_addrs);
 int dpu_hc_reply(dpu_hc_t *hc, dpu_get_sync_t *coll_sync);
 int dpu_hc_wait(dpu_hc_t *hc, unsigned int coll_id);
+int dpu_hc_reset_pipeline(dpu_hc_t *hc);
 int dpu_hc_reset_job(dpu_hc_t *dpu_hc);
 int dpu_hc_finalize(dpu_hc_t *dpu_hc);
 

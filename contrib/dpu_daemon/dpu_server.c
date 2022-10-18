@@ -638,6 +638,7 @@ void *dpu_comm_thread(void *arg)
                 dpu_coll_free_host_rkeys(ctx, hc, lsync);
             }
             dpu_coll_free_host_rkeys(ctx, dc, lsync);
+            dpu_hc_reset_pipeline(dc);
 
             CTX_LOG("End coll id: %u, type: %d, count total: %lu, count serviced: %zu\n",
                     coll_id, coll_type, count_total, (size_t)ctx->coll_sync->count_serviced);
@@ -681,102 +682,6 @@ end:
     CTX_LOG("Communication thread %d is finalized \n", ctx->idx);
 }
 
-#if 0
-void *dpu_worker_thread(void *arg)
-{
-    thread_ctx_t *ctx = (thread_ctx_t*)arg;
-    dpu_put_sync_t *lsync = &tmp_sync; //ctx->hc->mem_segs.sync.base;
-    ucc_coll_req_h request = NULL;
-    size_t count_serviced;
-    uint32_t dpu_team_size;
-
-    assert(ctx->idx == THREAD_IDX_WORKER);
-    dpu_thread_set_affinity(ctx);
-    CTX_LOG("Started worker thread\n");
-
-    while(1) {
-        CTX_LOG("Waiting for coll id: %u from comm thread\n", ctx->coll_sync->coll_id);
-        dpu_waitfor_comm_thread(ctx, thread_main_sync);
-
-        uint32_t coll_id          = lsync->coll_id;
-        size_t count_total        = lsync->count_total;
-        ucc_coll_type_t coll_type = lsync->coll_args.coll_type;
-        ucc_datatype_t dtype      = lsync->coll_args.src.info.datatype;
-        ucc_reduction_op_t op     = lsync->coll_args.op;
-        uint16_t create_team      = lsync->create_new_team;
-        uint16_t team_id          = lsync->team_id;
-        CTX_LOG("Start coll id: %d, type: %d, count total: %lu, team id: %u, create: %d\n",
-                coll_id, coll_type, count_total, team_id, create_team);
-        
-        if (coll_type == UCC_COLL_TYPE_LAST) {
-            if (create_team == 1) {
-
-                dpu_create_comm_team(ctx, lsync);
-                dpu_signal_comm_thread(ctx, thread_main_sync);
-                continue;
-
-            } else if (team_id == UCC_WORLD_TEAM_ID) {
-
-                /* World team free so Hang up */
-               // dpu_signal_comp_thread(ctx, thread_main_sync);
-               // dpu_mark_coll_done(ctx, lsync);
-                break;
-
-            } else {
-
-                /* releasing a subcomm's team that was already created
-                 * on the dpu world */
-
-                dpu_destroy_comm_team(ctx, lsync);
-                dpu_signal_comm_thread(ctx, thread_main_sync);
-                continue;
-            }
-        }
-
-        int finished = 0;
-        /* Process all data */
-        do {
-            CTX_LOG("Waiting for more data from comm thread\n");
-            dpu_waitfor_comm_thread(ctx, thread_sub_sync);
-            assert(UCC_COLL_TYPE_ALLREDUCE == coll_type);
-
-            dpu_buf_t *accbuf = (dpu_buf_t*)thread_sub_sync->accbuf;
-            dpu_buf_t *getbuf = (dpu_buf_t*)thread_sub_sync->getbuf;
-            CTX_LOG("accbuf %p getbuf %p\n", accbuf, getbuf);
-            if (accbuf == NULL && getbuf == NULL) {
-                finished = 1;
-                goto done;
-            }
-            assert(accbuf->state == REDUCING && accbuf->count > 0 && accbuf->ucp_req == NULL);
-            assert(getbuf->state == REDUCING && getbuf->count > 0 && getbuf->ucp_req == NULL);
-
-            size_t count = accbuf->count;
-            // ucc_mc_reduce(accbuf->buf, getbuf->buf, accbuf->buf,
-            //               count, dtype, op, UCC_MEMORY_TYPE_HOST);
-            ucc_mc_reduce_multi(accbuf->buf, getbuf->buf, accbuf->buf,
-                          1, count, 0, dtype, op, UCC_MEMORY_TYPE_HOST);
-            CTX_LOG("Reduced %lu elements, serviced %lu out of %lu\n",
-                    count, ctx->hc->pipeline.count_reduced, ctx->hc->pipeline.my_count);
-        done:
-            dpu_coll_do_barrier(ctx, lsync);
-            dpu_signal_comm_thread(ctx, thread_sub_sync);
-
-        } while (!finished);
-
-        ucc_team_h team = ctx->comm->team_pool[lsync->team_id];
-        assert(team != NULL);
-        UCC_CHECK(ucc_team_get_size(team, &dpu_team_size));
-        ctx->coll_sync->count_serviced = ctx->hc->pipeline.my_count * dpu_team_size;
-        CTX_LOG("End coll id: %d, type: %d, count total: %lu, count serviced: %zu\n",
-                coll_id, coll_type, count_total, (size_t)ctx->coll_sync->count_serviced);
-        dpu_signal_comm_thread(ctx, thread_main_sync);
-    }
-
-    CTX_LOG("Worker thread is finalized \n");
-    return NULL;
-}
-#endif
-
 void _cleanup()
 {
     dpu_hc_finalize(ucc_glob.hc);
@@ -791,13 +696,13 @@ void _sighandler(int signal)
 int main(int argc, char **argv)
 {
     char *s = NULL;
-    int num_threads = 1;
+    int num_threads = 8;
     // s = getenv("UCC_MC_CPU_REDUCE_NUM_THREADS");
     // if (s) { num_threads = atoi(s); }
     
-    int window_size = 32;
-    s = getenv("UCC_TL_DPU_BCAST_WINDOW");
-    if (s) { window_size = atoi(s); }
+    int window_size = 1;
+    // s = getenv("UCC_TL_DPU_BCAST_WINDOW");
+    // if (s) { window_size = atoi(s); }
     hc.window_size = window_size;
 
     int listen_port = DEFAULT_PORT;
