@@ -24,10 +24,6 @@ dpu_hc_t         hc;
 dpu_get_sync_t   coll_sync = {0};
 dpu_put_sync_t   tmp_sync = {0};
 
-thread_sync_t syncs[2] = {0};
-thread_sync_t *thread_main_sync = &syncs[0];
-thread_sync_t *thread_sub_sync  = &syncs[1];
-
 pthread_mutex_t sync_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t sync_cond = PTHREAD_COND_INITIALIZER;
 
@@ -569,16 +565,12 @@ void *dpu_comm_thread(void *arg)
             if (create_team == 1) {
 
                 dpu_create_comm_team(ctx, lsync);
-                // dpu_signal_comp_thread(ctx, thread_main_sync);
-                // dpu_waitfor_comp_thread(ctx, thread_main_sync);
                 continue;
 
             } else if (team_id == UCC_WORLD_TEAM_ID) {
 
                 /* World team free so Hang up */
-                // dpu_signal_comp_thread(ctx, thread_main_sync);
                 /* Don't send a response back to Host */
-                // dpu_mark_coll_done(ctx, lsync);
                 ucp_rkey_destroy(hc->src_rkey);
                 ucp_rkey_destroy(hc->dst_rkey);
                 break;
@@ -589,8 +581,6 @@ void *dpu_comm_thread(void *arg)
                  * on the dpu world */
 
                 dpu_destroy_comm_team(ctx, lsync);
-                // dpu_signal_comp_thread(ctx, thread_main_sync);
-                // dpu_waitfor_comp_thread(ctx, thread_main_sync);
                 continue;
             }
         }

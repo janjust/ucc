@@ -860,7 +860,7 @@ ucs_status_t dpu_hc_issue_put(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
     return UCS_OK;
 }
 
-ucs_status_t dpu_hc_issue_allreduce(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_ctx_t *ctx, dpu_stage_t *stage, dpu_buf_t *accbuf, dpu_buf_t *getbuf)
+ucs_status_t dpu_hc_local_reduce(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_ctx_t *ctx, dpu_stage_t *stage, dpu_buf_t *accbuf, dpu_buf_t *getbuf)
 {
     assert(stage->phase == REDUCE);
     assert(accbuf->state == IDLE && accbuf->ucp_req == NULL);
@@ -869,15 +869,12 @@ ucs_status_t dpu_hc_issue_allreduce(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_c
 
     accbuf->state = REDUCING;
     getbuf->state = REDUCING;
-    // thread_sub_sync->accbuf = accbuf;
-    // thread_sub_sync->getbuf = getbuf;
 
     ucc_datatype_t dtype = sync->coll_args.src.info.datatype;
     ucc_reduction_op_t op = sync->coll_args.op;
 
     ucp_worker_fence(hc->ucp_worker);
     CTX_LOG("Issue AR accbuf %p getbuf %p count %lu\n", accbuf->buf, getbuf->buf, accbuf->count);
-    // dpu_signal_comp_thread(ctx, thread_sub_sync);
     ucc_mc_reduce_multi(accbuf->buf, getbuf->buf, accbuf->buf,
                         1, accbuf->count, 0, dtype, op, UCC_MEMORY_TYPE_HOST);
     
@@ -973,26 +970,27 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
         }
         if (getbuf->state == IDLE && accbuf->state == IDLE) {
             assert(stage->done_get > stage->done_red);
-            dpu_hc_issue_allreduce(hc, sync, ctx, stage, accbuf, getbuf);
             /* Swap Reduce and Get buffers */
             stage->red_idx = stage->get_idx;
             stage->get_idx = (stage->get_idx + 1) % 2;
-        }
-        if (redbuf->state == REDUCING && accbuf->state == REDUCING) {
-            /* Check for reduce completion */
-            if (dpu_check_comp_status(ctx, thread_sub_sync) == UCC_OK) {
-                redbuf->state = FREE;
-                accbuf->state = IDLE;
-                stage->done_red += 1;
-                DPU_LOG("Reduced %ld bytes from getbuf[%d], reds done %d\n",
-                        redbuf->count, stage->red_idx, stage->done_red);
-                thread_sub_sync->accbuf = thread_sub_sync->getbuf = NULL;
 
-                if (stage->done_red == host_team_size-1) {
-                    /* Start broadcast */
-                    stage->phase = BCAST;
-                    pp->count_reduced += accbuf->count;
-                }
+            /* Issue another get if possible for overlap */
+            if (getbuf->state == FREE && stage->done_get < host_team_size) {
+                dpu_hc_issue_get(hc, sync, stage, getbuf, ctx);
+            }
+
+            /* Blocking allreduce */
+            dpu_hc_local_reduce(hc, sync, ctx, stage, accbuf, getbuf);
+            redbuf->state = FREE;
+            accbuf->state = IDLE;
+            stage->done_red += 1;
+            DPU_LOG("Reduced %ld bytes from getbuf[%d], reds done %d\n",
+                    redbuf->count, stage->red_idx, stage->done_red);
+
+            if (stage->done_red == host_team_size-1) {
+                /* Start broadcast */
+                stage->phase = BCAST;
+                pp->count_reduced += accbuf->count;
             }
         }
         break;
