@@ -30,7 +30,7 @@ pthread_cond_t sync_cond = PTHREAD_COND_INITIALIZER;
 pthread_barrier_t sync_barrier;
 pthread_barrierattr_t barrier_attr;
 
-uint64_t dpu_coll_counter[UCC_COLL_TYPE_LAST] = {0};
+size_t dpu_coll_counter[UCC_COLL_TYPE_LAST] = {0};
 
 static void dpu_coll_print_summary(void)
 {
@@ -42,9 +42,9 @@ static void dpu_coll_print_summary(void)
     printf("# Summary ");
     /* TODO: find a more robust way to iterate */
     for (ucc_coll_type_t coll=1; coll<UCC_COLL_TYPE_LAST; coll <<= 1) {
-        uint64_t count = dpu_coll_counter[coll];
+        size_t count = dpu_coll_counter[coll];
         if (count > 0) {
-            printf(" %s %lu ", ucc_coll_type_str(coll), count);
+            printf(" %s %zu ", ucc_coll_type_str(coll), count);
         }
         dpu_coll_counter[coll] = 0; /* Reset Counter */
     }
@@ -299,7 +299,7 @@ static void dpu_coll_collect_host_rkeys(thread_ctx_t *ctx, dpu_hc_t *hc, dpu_put
     }
     UCC_CHECK(ucc_collective_finalize(request));
 
-    memset(hc->host_rkeys, 0, sizeof(host_rkey_t) * hc->world_size);
+    /*memset(hc->host_rkeys, 0, sizeof(host_rkey_t) * hc->world_size);
 
     for (i = 0; i < team_size; i++) {
         ep_rank  = dpu_get_world_rank(hc, i, lsync->team_id, ctx);
@@ -316,7 +316,7 @@ static void dpu_coll_collect_host_rkeys(thread_ctx_t *ctx, dpu_hc_t *hc, dpu_put
         assert(NULL != hc->host_rkeys[ep_rank].dst_buf);
         CTX_LOG("Rank %d with EP Rank %d  team_id  %d src buf %p dst buf %p\n", 
                 i, ep_rank, lsync->team_id, hc->host_rkeys[ep_rank].src_buf, hc->host_rkeys[ep_rank].dst_buf);
-    }
+    }*/
 
     hc->rail = lsync->rail;
     hc->dpu_per_node_cnt = lsync->dpu_per_node_cnt;
@@ -550,7 +550,9 @@ void *dpu_comm_thread(void *arg)
         dpu_per_node_cnt = lsync->dpu_per_node_cnt;
 
         assert(0 <= team_id && team_id < DPU_TEAM_POOL_SIZE);
-        dpu_coll_counter[coll_type]++;
+        if (ctx->idx == 0) {
+            dpu_coll_counter[coll_type]++;
+        }
 
         CTX_LOG(
             "Start coll id: %u, type: %d, count total: %lu on team: %u "

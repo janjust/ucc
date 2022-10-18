@@ -200,8 +200,8 @@ static int _dpu_ucx_init(dpu_hc_t *hc, int channel_type)
     }
 
     memset(&worker_params, 0, sizeof(worker_params));
-    // worker_params.field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
-    // worker_params.thread_mode = UCS_THREAD_MODE_MULTI;
+    worker_params.field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
+    worker_params.thread_mode = UCS_THREAD_MODE_MULTI;
 
     status = ucp_worker_create(hc->ucp_ctx, &worker_params, &hc->ucp_worker);
     if (status != UCS_OK) {
@@ -809,7 +809,7 @@ ucs_status_t dpu_hc_issue_get(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
         return UCS_ERR_NO_RESOURCE;
     }
 
-    size_t data_size = count * dt_size;
+    size_t data_size = count * dt_size * 1;
     void *src_addr = hc->host_rkeys[ep_src_rank].src_buf + get_offset;
     void *dst_addr = getbuf->buf;
 
@@ -840,7 +840,7 @@ ucs_status_t dpu_hc_issue_put(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
 
     assert(dst_rank < host_team_size);
 
-    size_t data_size = count * dt_size;
+    size_t data_size = count * dt_size * 1;
     void *src_addr = accbuf->buf;
     void *dst_addr = hc->host_rkeys[ep_dst_rank].dst_buf + put_offset;
 
@@ -848,8 +848,8 @@ ucs_status_t dpu_hc_issue_put(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
             dst_rank, put_offset, src_addr, dst_addr, count, data_size, host_team_size);
     assert(count > 0 && dt_size > 0 && accbuf->ucp_req == NULL);
 
-    int32_t *pbuf = accbuf->buf;
-    CTX_LOG("## PUT DATA %d %d\n", pbuf[0], pbuf[2]);
+    // int32_t *pbuf = accbuf->buf;
+    // CTX_LOG("## PUT DATA %d %d\n", pbuf[0], pbuf[2]);
     
     ucp_worker_fence(hc->ucp_worker);
     accbuf->ucp_req =
@@ -876,13 +876,13 @@ ucs_status_t dpu_hc_local_reduce(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_ctx_
     ucp_worker_fence(hc->ucp_worker);
     CTX_LOG("Issue AR accbuf %p getbuf %p count %lu\n", accbuf->buf, getbuf->buf, accbuf->count);
     ucc_mc_reduce_multi(accbuf->buf, getbuf->buf, accbuf->buf,
-                        1, accbuf->count, 0, dtype, op, UCC_MEMORY_TYPE_HOST);
+                        1, accbuf->count * 1, 0, dtype, op, UCC_MEMORY_TYPE_HOST);
     
-    int32_t *gbuf = getbuf->buf;
-    CTX_LOG("## GET DATA %d %d\n", gbuf[0], gbuf[2]);
+    // int32_t *gbuf = getbuf->buf;
+    // CTX_LOG("## GET DATA %d %d\n", gbuf[0], gbuf[2]);
 
-    int32_t *abuf = accbuf->buf;
-    CTX_LOG("## ACC DATA %d %d\n", abuf[0], abuf[2]);
+    // int32_t *abuf = accbuf->buf;
+    // CTX_LOG("## ACC DATA %d %d\n", abuf[0], abuf[2]);
     return UCS_OK;
 }
 
@@ -919,7 +919,6 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
     dpu_stage_t *stage = &pp->stages[0];
     dpu_buf_t *accbuf = &stage->accbuf;
     dpu_buf_t *getbuf = &stage->getbuf[stage->get_idx];
-    dpu_buf_t *redbuf = &stage->getbuf[stage->red_idx];
 
     switch(stage->phase) {
         case INIT:
@@ -970,22 +969,23 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
         }
         if (getbuf->state == IDLE && accbuf->state == IDLE) {
             assert(stage->done_get > stage->done_red);
-            /* Swap Reduce and Get buffers */
-            stage->red_idx = stage->get_idx;
-            stage->get_idx = (stage->get_idx + 1) % 2;
 
             /* Issue another get if possible for overlap */
-            if (getbuf->state == FREE && stage->done_get < host_team_size) {
-                dpu_hc_issue_get(hc, sync, stage, getbuf, ctx);
+            int cur_idx = stage->get_idx;
+            stage->get_idx = (cur_idx + 1) % 2;
+            dpu_buf_t *getbuf2 = &stage->getbuf[stage->get_idx];
+            if (getbuf2->state == FREE && stage->done_get < host_team_size) {
+                dpu_hc_issue_get(hc, sync, stage, getbuf2, ctx);
             }
 
             /* Blocking allreduce */
             dpu_hc_local_reduce(hc, sync, ctx, stage, accbuf, getbuf);
-            redbuf->state = FREE;
+            getbuf->state = FREE;
             accbuf->state = IDLE;
             stage->done_red += 1;
             DPU_LOG("Reduced %ld bytes from getbuf[%d], reds done %d\n",
-                    redbuf->count, stage->red_idx, stage->done_red);
+                    getbuf->count, cur_idx, stage->done_red);
+
 
             if (stage->done_red == host_team_size-1) {
                 /* Start broadcast */
