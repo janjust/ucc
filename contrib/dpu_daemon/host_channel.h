@@ -128,39 +128,39 @@ typedef enum dpu_buf_state_t {
 } dpu_buf_state_t;
 
 typedef struct dpu_buf_t {
-    void                       *buf;
-    volatile dpu_buf_state_t    state;
-    volatile ucs_status_ptr_t   ucp_req;
-    volatile size_t             count;
+    void              *buf;
+    dpu_buf_state_t    state;
+    ucs_status_ptr_t   ucp_req;
+    size_t             count;
 } dpu_buf_t;
 
 typedef struct dpu_stage_t {
     dpu_buf_t accbuf;
     dpu_buf_t getbuf[2];
     
-    volatile dpu_ar_phase_t phase;
-    volatile int get_idx;
-    volatile int red_idx;
-    volatile int src_rank;
-    volatile int dst_rank;
+    dpu_ar_phase_t phase;
+    int get_idx;
+    int red_idx;
+    int src_rank;
+    int dst_rank;
     
-    volatile int done_get;
-    volatile int done_red;
-    volatile int done_put;
+    int done_get;
+    int done_red;
+    int done_put;
 } dpu_stage_t;
 
 typedef struct dpu_pipeline_t {
-    size_t              buffer_size;
-    size_t              num_buffers;
-    ucs_status_ptr_t    sync_req;
-    
-    dpu_stage_t         stages[2];
-    size_t              my_count;
-    size_t              my_offset;
+    size_t             buffer_size;
+    size_t             num_buffers;
+    ucs_status_ptr_t   sync_req;
 
-    volatile size_t     count_received;
-    volatile size_t     count_reduced;
-    volatile size_t     count_serviced;
+    dpu_stage_t        stages[2];
+    size_t             my_count;
+    size_t             my_offset;
+
+    size_t             count_received;
+    size_t             count_reduced;
+    size_t             count_serviced;
 } dpu_pipeline_t;
 
 typedef struct dpu_hc_t {
@@ -250,6 +250,7 @@ ucs_status_t dpu_send_init_completion(dpu_hc_t *hc);
 
 size_t dpu_ucc_dt_size(ucc_datatype_t dt);
 int dpu_dc_create(thread_ctx_t *ctx, dpu_hc_t *hc, dpu_hc_t *dc);
+int dpu_dc_reset(dpu_hc_t *dc);
 
 void dpu_waitfor_comm_thread(thread_ctx_t *ctx, thread_sync_t *sync);
 void dpu_signal_comm_thread(thread_ctx_t *ctx, thread_sync_t *sync);

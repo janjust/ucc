@@ -353,7 +353,7 @@ static void dpu_import_dc_rkeys(thread_ctx_t *ctx, dpu_hc_t *_hc, dpu_hc_t *dc, 
     assert(dc->dpu_per_node_cnt > 0 && dc->rail >= 0 && dc->rail < dc->dpu_per_node_cnt);
 }
 
-void dpu_coll_do_barrier(thread_ctx_t *ctx, dpu_put_sync_t *lsync)
+void dpu_team_barrier(ucc_context_h ucc_ctx, ucc_team_h team)
 {
     ucs_status_t status;
     ucc_coll_req_h request;
@@ -362,16 +362,24 @@ void dpu_coll_do_barrier(thread_ctx_t *ctx, dpu_put_sync_t *lsync)
         .coll_type = UCC_COLL_TYPE_BARRIER,
     };
 
-    ucc_team_h team = ctx->comm->team_pool[lsync->team_id];
-    CTX_LOG("Issue Synchronizing Barrier on team %d\n", lsync->team_id);
-    assert(team != NULL);
-
     UCC_CHECK(ucc_collective_init(&coll, &request, team));
     UCC_CHECK(ucc_collective_post(request));
     while (UCC_OK != ucc_collective_test(request)) {
-        ucc_context_progress(ctx->comm->ctx);
+        ucc_context_progress(ucc_ctx);
     }
     UCC_CHECK(ucc_collective_finalize(request));
+}
+
+void dpu_coll_do_barrier(thread_ctx_t *ctx, dpu_put_sync_t *lsync)
+{
+    ucc_team_h team = ctx->comm->team_pool[lsync->team_id];
+    CTX_LOG("Issue Synchronizing Barrier on team %d\n", lsync->team_id);
+    dpu_team_barrier(ctx->comm->ctx, team);
+}
+
+void dpu_coll_world_barrier(dpu_ucc_comm_t *comm)
+{
+    dpu_team_barrier(comm->ctx, comm->team);
 }
 
 static void dpu_coll_free_host_rkeys(thread_ctx_t *ctx, dpu_hc_t *hc, dpu_put_sync_t *lsync)
@@ -719,7 +727,8 @@ int main(int argc, char **argv)
     thread_ctx_t comm_ctx[MAX_THREADS] = {0};
     UCC_CHECK(dpu_ucc_alloc_team(&ucc_glob, &comm));
     dpu_hc_connect_remote_hosts(&hc, &comm, 1);
-    
+
+    dpu_coll_world_barrier(&comm);
     pthread_barrier_init(&sync_barrier, &barrier_attr, num_threads);
     
     for (int i=0; i<num_threads; i++) {
@@ -733,6 +742,7 @@ int main(int argc, char **argv)
         dpu_dc_create(ctx, ctx->hc, ctx->dc);
         dpu_hc_connect_remote_hosts(ctx->dc, &comm, 0);
         pthread_create(&ctx->id, NULL, dpu_comm_thread, ctx);
+        dpu_coll_world_barrier(&comm);
     }
     
     UCS_CHECK(dpu_send_init_completion(&hc));
@@ -741,11 +751,12 @@ int main(int argc, char **argv)
         pthread_join(comm_ctx[i].id, NULL);
     }
     pthread_barrier_destroy(&sync_barrier);
+    dpu_coll_world_barrier(&comm);
     dpu_ucc_free_team(&ucc_glob, &comm);
     
     for (int i=0; i<num_threads; i++) {
         thread_ctx_t *ctx = &comm_ctx[i];
-        dpu_hc_reset_job(ctx->dc);
+        dpu_dc_reset(ctx->dc);
         free(ctx->dc);
     }
     dpu_hc_reset_job(&hc);

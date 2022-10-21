@@ -187,11 +187,12 @@ static int _dpu_ucx_init(dpu_hc_t *hc, int channel_type)
 
     ucp_params_t ucp_params = {0};
     ucp_params.field_mask = UCP_PARAM_FIELD_FEATURES;
-    if (channel_type == 0) {    /* Data channel */
-        ucp_params.features = UCP_FEATURE_RMA;
-    } else {    /* Command channel */
+    if (channel_type == 1) {    /* Comm channel uses Send-Recv only */
         ucp_params.features = UCP_FEATURE_TAG;
+    } else {                    /* Data channel uses Get-Put only */
+         ucp_params.features = UCP_FEATURE_RMA;
     }
+
     status = ucp_init(&ucp_params, NULL, &hc->ucp_ctx);
     if (status != UCS_OK) {
         fprintf(stderr, "failed to ucp_init(%s)\n", ucs_status_string(status));
@@ -201,7 +202,7 @@ static int _dpu_ucx_init(dpu_hc_t *hc, int channel_type)
 
     memset(&worker_params, 0, sizeof(worker_params));
     worker_params.field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
-    worker_params.thread_mode = UCS_THREAD_MODE_MULTI;
+    worker_params.thread_mode = UCS_THREAD_MODE_SINGLE; // Each thread owns its worker
 
     status = ucp_worker_create(hc->ucp_ctx, &worker_params, &hc->ucp_worker);
     if (status != UCS_OK) {
@@ -840,7 +841,7 @@ ucs_status_t dpu_hc_issue_put(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
 
     assert(dst_rank < host_team_size);
 
-    size_t data_size = count * dt_size * 1;
+    size_t data_size = count * dt_size * 0;
     void *src_addr = accbuf->buf;
     void *dst_addr = hc->host_rkeys[ep_dst_rank].dst_buf + put_offset;
 
@@ -876,7 +877,7 @@ ucs_status_t dpu_hc_local_reduce(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_ctx_
     ucp_worker_fence(hc->ucp_worker);
     CTX_LOG("Issue AR accbuf %p getbuf %p count %lu\n", accbuf->buf, getbuf->buf, accbuf->count);
     ucc_mc_reduce_multi(accbuf->buf, getbuf->buf, accbuf->buf,
-                        1, accbuf->count * 1, 0, dtype, op, UCC_MEMORY_TYPE_HOST);
+                        1, accbuf->count * 0, 0, dtype, op, UCC_MEMORY_TYPE_HOST);
     
     // int32_t *gbuf = getbuf->buf;
     // CTX_LOG("## GET DATA %d %d\n", gbuf[0], gbuf[2]);
@@ -884,17 +885,6 @@ ucs_status_t dpu_hc_local_reduce(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_ctx_
     // int32_t *abuf = accbuf->buf;
     // CTX_LOG("## ACC DATA %d %d\n", abuf[0], abuf[2]);
     return UCS_OK;
-}
-
-ucc_status_t dpu_check_comp_status(thread_ctx_t *ctx, thread_sync_t *sync)
-{
-    // if(!sync->accbuf || !sync->getbuf) {
-    //     return UCC_ERR_INVALID_PARAM;
-    // }
-    // if (!sync->done) {
-    //     return UCC_INPROGRESS;
-    // }
-    return UCC_OK;
 }
 
 ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
@@ -910,7 +900,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
     assert(host_team_size >= 1);
     int read_completed = 0;
 
-    for (i=0; i<10; i++) {
+    for (i=0; i<1; i++) {
         if (ucp_worker_progress(hc->ucp_worker)) {
             break;
         }
@@ -919,6 +909,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
     dpu_stage_t *stage = &pp->stages[0];
     dpu_buf_t *accbuf = &stage->accbuf;
     dpu_buf_t *getbuf = &stage->getbuf[stage->get_idx];
+    dpu_buf_t *redbuf = &stage->getbuf[stage->red_idx];
 
     switch(stage->phase) {
         case INIT:
@@ -969,23 +960,18 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
         }
         if (getbuf->state == IDLE && accbuf->state == IDLE) {
             assert(stage->done_get > stage->done_red);
-
-            /* Issue another get if possible for overlap */
-            int cur_idx = stage->get_idx;
-            stage->get_idx = (cur_idx + 1) % 2;
-            dpu_buf_t *getbuf2 = &stage->getbuf[stage->get_idx];
-            if (getbuf2->state == FREE && stage->done_get < host_team_size) {
-                dpu_hc_issue_get(hc, sync, stage, getbuf2, ctx);
-            }
-
-            /* Blocking allreduce */
             dpu_hc_local_reduce(hc, sync, ctx, stage, accbuf, getbuf);
-            getbuf->state = FREE;
+            /* Swap Reduce and Get buffers */
+            stage->red_idx = stage->get_idx;
+            stage->get_idx = (stage->get_idx + 1) % 2;
+        }
+        if (redbuf->state == REDUCING && accbuf->state == REDUCING) {
+            /* Blocking reduce will always be completed */
+            redbuf->state = FREE;
             accbuf->state = IDLE;
             stage->done_red += 1;
             DPU_LOG("Reduced %ld bytes from getbuf[%d], reds done %d\n",
-                    getbuf->count, cur_idx, stage->done_red);
-
+                    redbuf->count, stage->red_idx, stage->done_red);
 
             if (stage->done_red == host_team_size-1) {
                 /* Start broadcast */
@@ -1002,6 +988,8 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
             assert(stage->done_red == host_team_size-1);
             assert(stage->done_put < host_team_size);
 
+            dpu_hc_issue_put(hc, sync, stage, accbuf, ctx);
+            #if 0
             window_size = DPU_MIN(window_size, (host_team_size-stage->done_put));
             /* Issue a window of RDMA writes */
             for (int j=0; j<window_size; j++) {
@@ -1013,10 +1001,14 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
             }
             /* Wait for completion */
             _dpu_flush_host_eps(hc);
+            #endif
 
         } else if (accbuf->state == SENDRECV && accbuf->count > 0) {
             request = accbuf->ucp_req;
             if (_dpu_req_test(request) == UCS_OK) {
+                if (request) ucp_request_free(request);
+                accbuf->ucp_req = NULL;
+                stage->done_put++;
                 accbuf->state = IDLE;
                 DPU_LOG("Sent %ld bytes from accbuf, puts done %d\n",
                         accbuf->count, stage->done_put);
@@ -1066,6 +1058,18 @@ ucs_status_t dpu_send_init_completion(dpu_hc_t *hc)
     }
 
     return UCS_OK;
+}
+
+int dpu_dc_reset(dpu_hc_t *hc)
+{
+    _dpu_flush_host_eps(hc);
+    _dpu_worker_flush(hc);
+    _dpu_hc_buffer_free(hc, &hc->mem_segs.in);
+    _dpu_hc_buffer_free(hc, &hc->mem_segs.out);
+    _dpu_hc_buffer_free(hc, &hc->mem_segs.sync);
+    _dpu_close_host_eps(hc);
+    _dpu_ucx_fini(hc, 1);
+    return UCC_OK;
 }
 
 int dpu_hc_reset_job(dpu_hc_t *hc)
