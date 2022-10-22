@@ -17,12 +17,12 @@
 #include "ucc/api/ucc.h"
 
 #define NUM_CORES 8
-#define MAX_THREADS 8
 
 dpu_ucc_global_t ucc_glob;
 dpu_hc_t         hc;
 dpu_get_sync_t   coll_sync = {0};
 dpu_put_sync_t   tmp_sync = {0};
+dpu_thread_sync_t thread_sync = {0};
 
 pthread_mutex_t sync_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t sync_cond = PTHREAD_COND_INITIALIZER;
@@ -97,6 +97,52 @@ ucc_coll_args_get_total_count(const ucc_coll_args_t *args,
 
 ucc_ep_map_t ucc_ep_map_from_array(ucc_rank_t **array, ucc_rank_t size,
                                    ucc_rank_t full_size, int need_free);
+
+void signal_workers(thread_ctx_t *ctx)
+{
+    for (int i = 1; i < ctx->nth; i++) {
+        ctx->thread_sync->done[i] = 0;
+        ctx->thread_sync->todo[i] = 1;
+    }
+}
+
+void waitfor_workers(thread_ctx_t *ctx)
+{
+    int done;
+    do {
+        done = 0;
+        for (int i = 1; i < ctx->nth; i++) {
+            if (ctx->thread_sync->done[i]) {
+                done++;
+            }
+        }
+    } while (done < ctx->nth - 1);
+}
+
+void waitfor_master(thread_ctx_t *ctx)
+{
+    int i = ctx->idx;
+    while (!ctx->thread_sync->todo[i]);
+    ctx->thread_sync->todo[i] = 0;
+}
+
+void signal_master(thread_ctx_t *ctx)
+{
+    int i = ctx->idx;
+    ctx->thread_sync->done[i] = 1;
+}
+
+void thread_barrier(thread_ctx_t *ctx)
+{
+    // pthread_barrier_wait(&sync_barrier);
+    if (!ctx->idx) {
+        signal_workers(ctx);
+        waitfor_workers(ctx);
+    } else {
+        waitfor_master(ctx);
+        signal_master(ctx);
+    }
+}
 
 static void dpu_thread_set_affinity(thread_ctx_t *ctx)
 {
@@ -547,7 +593,7 @@ void *dpu_comm_thread(void *arg)
             CTX_LOG("Waiting for coll id: %u from host\n", ctx->coll_sync->coll_id);
             dpu_wait_for_next_coll(ctx);
         }
-        pthread_barrier_wait(&sync_barrier);
+        thread_barrier(ctx);
 
         coll_id     = lsync->coll_id;
         coll_type   = lsync->coll_args.coll_type;
@@ -604,7 +650,7 @@ void *dpu_comm_thread(void *arg)
             if (ctx->idx == 0) {
                 dpu_coll_collect_host_rkeys(ctx, hc, lsync);
             }
-            pthread_barrier_wait(&sync_barrier);
+            thread_barrier(ctx);
             dpu_import_dc_rkeys(ctx, hc, dc, lsync);
  
             ucc_datatype_t dtype = lsync->coll_args.src.info.datatype;
@@ -629,7 +675,7 @@ void *dpu_comm_thread(void *arg)
                     lsync->count_total, dc->pipeline.my_count,
                     dc->pipeline.my_offset, dc->pipeline.count_serviced);
 
-            pthread_barrier_wait(&sync_barrier);
+            thread_barrier(ctx);
             if (ctx->idx == 0) {
                 CTX_LOG("Waiting for all ranks to complete coll id: %u, type: %d\n",
                     coll_id, coll_type);
@@ -737,6 +783,7 @@ int main(int argc, char **argv)
         ctx->nth = num_threads;
         ctx->hc = &hc;
         ctx->coll_sync = &coll_sync;
+        ctx->thread_sync = &thread_sync;
         ctx->comm = &comm;
         ctx->dc = malloc(sizeof(dpu_hc_t));
         dpu_dc_create(ctx, ctx->hc, ctx->dc);

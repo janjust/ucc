@@ -24,6 +24,7 @@
 #include <ucc/api/ucc.h>
 #include <ucp/api/ucp.h>
 
+#define MAX_THREADS         8
 #define MAX_NUM_RANKS       128
 #define MAX_RKEY_LEN        1024
 #define IP_STRING_LEN       50
@@ -112,6 +113,11 @@ typedef struct dpu_mem_segs_t {
     dpu_mem_t in;
     dpu_mem_t out;
 } dpu_mem_segs_t;
+
+typedef struct dpu_thread_sync_t {
+    volatile int8_t todo[MAX_THREADS];
+    volatile int8_t done[MAX_THREADS];
+} dpu_thread_sync_t;
 
 typedef enum dpu_ar_phase_t {
     WAIT,
@@ -222,7 +228,6 @@ int dpu_hc_reset_pipeline(dpu_hc_t *hc);
 int dpu_hc_reset_job(dpu_hc_t *dpu_hc);
 int dpu_hc_finalize(dpu_hc_t *dpu_hc);
 
-
 typedef struct thread_ctx_t {
     pthread_t       id;
     int             idx;
@@ -231,6 +236,7 @@ typedef struct thread_ctx_t {
     dpu_hc_t        *hc;
     dpu_hc_t        *dc;
     dpu_get_sync_t  *coll_sync;
+    dpu_thread_sync_t *thread_sync;
 } thread_ctx_t;
 
 /* thread accisble data - split reader/writer */

@@ -810,7 +810,7 @@ ucs_status_t dpu_hc_issue_get(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
         return UCS_ERR_NO_RESOURCE;
     }
 
-    size_t data_size = count * dt_size * 1;
+    size_t data_size = count * dt_size * 0;
     void *src_addr = hc->host_rkeys[ep_src_rank].src_buf + get_offset;
     void *dst_addr = getbuf->buf;
 
