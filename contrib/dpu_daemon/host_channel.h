@@ -37,9 +37,9 @@
 #define DPU_MAX(a,b) (((a)>(b))?(a):(b))
 
 // For UCC
-//#define UCC_WORLD_TEAM_ID 1
+#define UCC_WORLD_TEAM_ID 1
 // For OpenMPI
-#define UCC_WORLD_TEAM_ID 32768
+// #define UCC_WORLD_TEAM_ID 32768
 
 #ifdef NDEBUG
 #define DPU_LOG(...)

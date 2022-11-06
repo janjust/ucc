@@ -746,7 +746,7 @@ int main(int argc, char **argv)
     // s = getenv("UCC_MC_CPU_REDUCE_NUM_THREADS");
     // if (s) { num_threads = atoi(s); }
     
-    int window_size = 1;
+    int window_size = 4;
     // s = getenv("UCC_TL_DPU_BCAST_WINDOW");
     // if (s) { window_size = atoi(s); }
     hc.window_size = window_size;

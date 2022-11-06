@@ -810,7 +810,7 @@ ucs_status_t dpu_hc_issue_get(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
         return UCS_ERR_NO_RESOURCE;
     }
 
-    size_t data_size = count * dt_size * 0;
+    size_t data_size = count * dt_size * 1;
     void *src_addr = hc->host_rkeys[ep_src_rank].src_buf + get_offset;
     void *dst_addr = getbuf->buf;
 
@@ -841,7 +841,7 @@ ucs_status_t dpu_hc_issue_put(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
 
     assert(dst_rank < host_team_size);
 
-    size_t data_size = count * dt_size * 0;
+    size_t data_size = count * dt_size * 1;
     void *src_addr = accbuf->buf;
     void *dst_addr = hc->host_rkeys[ep_dst_rank].dst_buf + put_offset;
 
@@ -910,6 +910,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
     dpu_buf_t *accbuf = &stage->accbuf;
     dpu_buf_t *getbuf = &stage->getbuf[stage->get_idx];
     dpu_buf_t *redbuf = &stage->getbuf[stage->red_idx];
+    dpu_buf_t *dummybuf = &pp->stages[1].getbuf[0];
 
     switch(stage->phase) {
         case INIT:
@@ -960,7 +961,8 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
         }
         if (getbuf->state == IDLE && accbuf->state == IDLE) {
             assert(stage->done_get > stage->done_red);
-            dpu_hc_local_reduce(hc, sync, ctx, stage, accbuf, getbuf);
+            getbuf->state = REDUCING;
+            dpu_hc_local_reduce(hc, sync, ctx, stage, accbuf, dummybuf);
             /* Swap Reduce and Get buffers */
             stage->red_idx = stage->get_idx;
             stage->get_idx = (stage->get_idx + 1) % 2;
@@ -988,8 +990,9 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
             assert(stage->done_red == host_team_size-1);
             assert(stage->done_put < host_team_size);
 
-            dpu_hc_issue_put(hc, sync, stage, accbuf, ctx);
             #if 0
+            dpu_hc_issue_put(hc, sync, stage, accbuf, ctx);
+            #else
             window_size = DPU_MIN(window_size, (host_team_size-stage->done_put));
             /* Issue a window of RDMA writes */
             for (int j=0; j<window_size; j++) {
@@ -1006,9 +1009,9 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
         } else if (accbuf->state == SENDRECV && accbuf->count > 0) {
             request = accbuf->ucp_req;
             if (_dpu_req_test(request) == UCS_OK) {
-                if (request) ucp_request_free(request);
-                accbuf->ucp_req = NULL;
-                stage->done_put++;
+                // if (request) ucp_request_free(request);
+                // accbuf->ucp_req = NULL;
+                // stage->done_put++;
                 accbuf->state = IDLE;
                 DPU_LOG("Sent %ld bytes from accbuf, puts done %d\n",
                         accbuf->count, stage->done_put);
