@@ -1,5 +1,6 @@
 /**
- * Copyright (c) 2021, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2021-2022, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ *
  * See file LICENSE for terms.
  */
 
@@ -7,6 +8,9 @@
 #include "ucc_malloc.h"
 #include "ucc_log.h"
 #include "khash.h"
+#include "schedule/ucc_schedule.h"
+#include "schedule/ucc_schedule_pipelined.h"
+#include "utils/ucc_string.h"
 
 ucc_status_t ucc_config_names_array_merge(ucc_config_names_array_t *dst,
                                           const ucc_config_names_array_t *src)
@@ -316,20 +320,24 @@ static ucc_status_t ucc_apply_file_cfg(void *opts, ucc_config_field_t *fields,
     return UCC_OK;
 }
 
-ucc_status_t ucc_config_parser_fill_opts(void *opts, ucc_config_field_t *fields,
-                                         const char *env_prefix,
-                                         const char *table_prefix,
-                                         int         ignore_errors)
+ucc_status_t ucc_config_parser_fill_opts(void *opts, ucs_config_global_list_entry_t *entry,
+                                         const char *env_prefix, int ignore_errors)
 {
     ucs_status_t ucs_status;
     ucc_status_t status;
 
-    ucs_status = ucs_config_parser_fill_opts(opts, fields, env_prefix,
-                                             table_prefix, ignore_errors);
-    status     = ucs_status_to_ucc_status(ucs_status);
+#if UCS_HAVE_CONFIG_GLOBAL_LIST_ENTRY_FLAGS
+    ucs_status = ucs_config_parser_fill_opts(opts, entry, env_prefix,
+                                             ignore_errors);
+#else
+    ucs_status = ucs_config_parser_fill_opts(opts, entry->table, env_prefix,
+                                             entry->prefix, 0);
+#endif
 
+    status     = ucs_status_to_ucc_status(ucs_status);
     if (UCC_OK == status && ucc_global_config.file_cfg) {
-        status = ucc_apply_file_cfg(opts, fields, env_prefix, table_prefix);
+        status = ucc_apply_file_cfg(opts, entry->table, env_prefix,
+                                    entry->prefix);
     }
 
     return status;
@@ -339,11 +347,11 @@ void ucc_config_parser_print_all_opts(FILE *stream, const char *prefix,
                                       ucc_config_print_flags_t flags,
                                       ucc_list_link_t *        config_list)
 {
-    const ucc_config_global_list_entry_t *entry;
-    ucs_config_print_flags_t              ucs_flags;
-    ucc_status_t                          status;
-    char                                  title[64];
-    void *                                opts;
+    ucc_config_global_list_entry_t *entry;
+    ucs_config_print_flags_t        ucs_flags;
+    ucc_status_t                    status;
+    char                            title[64];
+    void *                          opts;
 
     ucs_flags = ucc_print_flags_to_ucs_print_flags(flags);
     ucc_list_for_each(entry, config_list, list)
@@ -360,8 +368,7 @@ void ucc_config_parser_print_all_opts(FILE *stream, const char *prefix,
             continue;
         }
 
-        status = ucc_config_parser_fill_opts(opts, entry->table, prefix,
-                                             entry->prefix, 0);
+        status = ucc_config_parser_fill_opts(opts, entry, prefix, 0);
         if (status != UCC_OK) {
             ucc_free(opts);
             continue;
@@ -374,4 +381,142 @@ void ucc_config_parser_print_all_opts(FILE *stream, const char *prefix,
         ucs_config_parser_release_opts(opts, entry->table);
         ucc_free(opts);
     }
+}
+
+#define UCC_UUNITS_AUTO    ((unsigned)-2)
+
+static ucc_pipeline_params_t ucc_pipeline_params_auto = {
+    .threshold = 0,
+    .n_frags   = 0,
+    .frag_size = 0,
+    .pdepth    = 0,
+    .order     = 0
+};
+
+static ucc_pipeline_params_t ucc_pipeline_params_no = {
+    .threshold = SIZE_MAX,
+    .n_frags   = 0,
+    .frag_size = 0,
+    .pdepth    = 1,
+    .order     = 0
+};
+
+static ucc_pipeline_params_t ucc_pipeline_params_default = {
+    .threshold = SIZE_MAX,
+    .n_frags   = 2,
+    .frag_size = SIZE_MAX,
+    .pdepth    = 2,
+    .order     = UCC_PIPELINE_SEQUENTIAL
+};
+
+int ucc_pipeline_params_is_auto(const ucc_pipeline_params_t *p)
+{
+    return 0 == memcmp(p, &ucc_pipeline_params_auto, sizeof(*p));
+}
+
+int ucc_config_sscanf_pipeline_params(const char *buf, void *dest,
+                                      const void *arg) //NOLINT
+{
+    ucc_pipeline_params_t *p = dest;
+    ucc_status_t           status;
+    int                    i, n_tokens, order;
+    char **                tokens, **t2;
+
+    if (strlen(buf) == 0) {
+        return 0;
+    }
+
+    /* Special value: auto */
+    if (!strcasecmp(buf, UCS_VALUE_AUTO_STR)) {
+        *p = ucc_pipeline_params_auto;
+        return 1;
+    }
+
+    if (!strcasecmp(buf, "n")) {
+        *p = ucc_pipeline_params_no;
+        return 1;
+    }
+
+    *p     = ucc_pipeline_params_default;
+    tokens = ucc_str_split(buf, ":");
+    if (!tokens) {
+        return 0;
+    }
+    n_tokens = ucc_str_split_count(tokens);
+
+    for (i = 0; i < n_tokens; i++) {
+        if ((order = ucs_string_find_in_list(
+                 tokens[i], ucc_pipeline_order_names, 0)) >= 0) {
+            p->order = (ucc_pipeline_order_t)order;
+            continue;
+        }
+        t2 = ucc_str_split(tokens[i], "=");
+        if (!t2) {
+            goto out;
+        }
+        if (ucc_str_split_count(t2) != 2) {
+            goto out;
+        }
+        if (0 == strcmp(t2[0], "thresh")) {
+            status = ucc_str_to_memunits(t2[1], &p->threshold);
+            if (UCC_OK != status) {
+                goto out;
+            }
+        } else if (0 == strcmp(t2[0], "fragsize")) {
+            status = ucc_str_to_memunits(t2[1], &p->frag_size);
+            if (UCC_OK != status) {
+                goto out;
+            }
+        } else if (0 == strcmp(t2[0], "nfrags")) {
+            status = ucc_str_is_number(t2[1]);
+            if (UCC_OK != status) {
+                goto out;
+            }
+            p->n_frags = atoi(t2[1]);
+        } else if (0 == strcmp(t2[0], "pdepth")) {
+            status = ucc_str_is_number(t2[1]);
+            if (UCC_OK != status) {
+                goto out;
+            }
+            p->pdepth = atoi(t2[1]);
+        }
+        ucc_str_split_free(t2);
+    }
+    return 1;
+out:
+    if (t2) {
+        ucc_str_split_free(t2);
+    }
+    ucc_str_split_free(tokens);
+    return 0;
+}
+
+int ucc_config_sprintf_pipeline_params(char *buf, size_t max, const void *src,
+                                       const void *arg) //NOLINT
+{
+    const ucc_pipeline_params_t *p = src;
+    char                         thresh[32], frag_size[32];
+
+    if (ucc_pipeline_params_is_auto(p)) {
+        return snprintf(buf, max, "auto");
+    }
+    if (!memcmp(p, &ucc_pipeline_params_no, sizeof(*p))) {
+        return snprintf(buf, max, "n");
+    }
+    return snprintf(
+        buf, max, "thresh=%s:nfrags=%d:fragsize=%s:pdepth=%d:order=%s",
+        ucs_memunits_to_str(p->threshold, thresh, sizeof(thresh)), p->n_frags,
+        ucs_memunits_to_str(p->frag_size, frag_size, sizeof(frag_size)),
+        p->pdepth, ucc_pipeline_order_names[p->order]);
+}
+
+ucs_status_t ucc_config_clone_pipeline_params(const void *src, void *dest,
+                                              const void *arg) //NOLINT
+{
+    memcpy(dest, src, sizeof(ucc_pipeline_params_t));
+    return UCS_OK;
+}
+
+void ucc_config_release_pipeline_params(void *ptr, const void *arg)
+{
 }
