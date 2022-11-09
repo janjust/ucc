@@ -179,7 +179,7 @@ static ucs_status_t _dpu_worker_flush(dpu_hc_t *hc)
     return _dpu_request_wait(hc->ucp_worker, request);
 }
 
-static int _dpu_ucx_init(dpu_hc_t *hc, int channel_type)
+static int _dpu_ucx_init(dpu_hc_t *hc)
 {
     ucs_status_t status;
     ucp_worker_params_t worker_params;
@@ -187,10 +187,12 @@ static int _dpu_ucx_init(dpu_hc_t *hc, int channel_type)
 
     ucp_params_t ucp_params = {0};
     ucp_params.field_mask = UCP_PARAM_FIELD_FEATURES;
-    if (channel_type == 1) {    /* Comm channel uses Send-Recv only */
+    if (hc->channel_type == HOST_COMM_CHANNEL) {
+        /* Comm channel uses Send-Recv only */
         ucp_params.features = UCP_FEATURE_TAG;
-    } else {                    /* Data channel uses Get-Put only */
-         ucp_params.features = UCP_FEATURE_RMA;
+    } else {
+        /* Data channel uses Get-Put only */
+        ucp_params.features = UCP_FEATURE_RMA;
     }
 
     status = ucp_init(&ucp_params, NULL, &hc->ucp_ctx);
@@ -230,12 +232,10 @@ err:
     return ret;
 }
 
-static int _dpu_ucx_fini(dpu_hc_t *hc, int cleanup_ctx){
+static int _dpu_ucx_fini(dpu_hc_t *hc){
     ucp_worker_release_address(hc->ucp_worker, hc->worker_attr.address);
     ucp_worker_destroy(hc->ucp_worker);
-    if (cleanup_ctx) {
-        ucp_cleanup(hc->ucp_ctx);
-    }
+    ucp_cleanup(hc->ucp_ctx);
 }
 
 static int _dpu_hc_buffer_alloc(dpu_hc_t *hc, dpu_mem_t *mem, size_t size)
@@ -451,7 +451,7 @@ int dpu_hc_connect_localhost_ep(dpu_hc_t *hc)
     return status;
 }
 
-static ucs_status_t _dpu_create_remote_host_eps(dpu_hc_t *hc, dpu_ucc_comm_t *comm, int collect_addrs)
+static ucs_status_t _dpu_create_remote_host_eps(dpu_hc_t *hc, dpu_ucc_comm_t *comm)
 {
     ucs_status_t status;
     ucp_ep_params_t ep_params;
@@ -463,7 +463,7 @@ static ucs_status_t _dpu_create_remote_host_eps(dpu_hc_t *hc, dpu_ucc_comm_t *co
 
     /* Allgather Host EP addresses */
     hc->host_eps = calloc(hc->world_size, sizeof(ucp_ep_h));
-    if (collect_addrs) {
+    if (hc->channel_type == HOST_COMM_CHANNEL) {
         hc->remote_addrs = calloc(hc->world_size, rem_worker_addr_len);
         dpu_coll_collect_host_addrs(comm, rem_worker_addr, rem_worker_addr_len, hc->remote_addrs);
     } else {
@@ -478,8 +478,8 @@ static ucs_status_t _dpu_create_remote_host_eps(dpu_hc_t *hc, dpu_ucc_comm_t *co
 
     /* Connect to all remote hosts */
     for (i = 0; i < hc->world_size; i++) {
-        /* Skip Local Host, Already Connected */
-        if (i == hc->world_rank && collect_addrs) {
+        /* Skip Local Host for Comm channel, Already Connected */
+        if (i == hc->world_rank && hc->channel_type == HOST_COMM_CHANNEL) {
             hc->host_eps[i] = hc->localhost_ep;
             continue;
         }
@@ -565,9 +565,10 @@ int dpu_hc_accept_job(dpu_hc_t *hc)
 {
     int ret;
     hc->job_id++;
+    hc->channel_type = HOST_COMM_CHANNEL;
 
     /* init ucx ctx and worker */
-    ret = _dpu_ucx_init(hc, 1);
+    ret = _dpu_ucx_init(hc);
     if (ret) {
         goto err_ucx;
     }
@@ -655,17 +656,17 @@ int dpu_hc_accept_job(dpu_hc_t *hc)
 err:
     close(hc->connfd);
 err_ucx:
-    _dpu_ucx_fini(hc, 1);
+    _dpu_ucx_fini(hc);
 out:
     return ret;
 }
 
-int dpu_hc_connect_remote_hosts(dpu_hc_t *hc, dpu_ucc_comm_t *comm, int collect_addrs)
+int dpu_hc_connect_remote_hosts(dpu_hc_t *hc, dpu_ucc_comm_t *comm)
 {
     int ret;
 
-    if (ret = _dpu_create_remote_host_eps(hc, comm, collect_addrs)) {
-        fprintf(stderr, "_dpu_create_remote_host_eps failed!, %d\n", collect_addrs);
+    if (ret = _dpu_create_remote_host_eps(hc, comm)) {
+        fprintf(stderr, "_dpu_create_remote_host_eps failed!, %d\n", ret);
         ret = UCC_ERR_NO_MESSAGE;
         goto err;
     }
@@ -683,10 +684,13 @@ err:
 int dpu_dc_create(thread_ctx_t *ctx, dpu_hc_t *hc, dpu_hc_t *dc)
 {
     int ret;
+
+    assert(hc->channel_type == HOST_COMM_CHANNEL);
     memcpy(dc, hc, sizeof(dpu_hc_t));
+    dc->channel_type = HOST_DATA_CHANNEL;
 
     CTX_LOG("Creating Data channel\n");
-    ret = _dpu_ucx_init(dc, 0);
+    ret = _dpu_ucx_init(dc);
     if (ret) {
         goto err_ucx;
     }
@@ -703,7 +707,7 @@ int dpu_dc_create(thread_ctx_t *ctx, dpu_hc_t *hc, dpu_hc_t *dc)
     ret = 0;
     goto out;
 err_ucx:
-    _dpu_ucx_fini(dc, 1);
+    _dpu_ucx_fini(dc);
 out:
     return ret;
 }
@@ -810,7 +814,7 @@ ucs_status_t dpu_hc_issue_get(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
         return UCS_ERR_NO_RESOURCE;
     }
 
-    size_t data_size = count * dt_size * 1;
+    size_t data_size = count * dt_size;
     void *src_addr = hc->host_rkeys[ep_src_rank].src_buf + get_offset;
     void *dst_addr = getbuf->buf;
 
@@ -841,7 +845,7 @@ ucs_status_t dpu_hc_issue_put(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
 
     assert(dst_rank < host_team_size);
 
-    size_t data_size = count * dt_size * 1;
+    size_t data_size = count * dt_size;
     void *src_addr = accbuf->buf;
     void *dst_addr = hc->host_rkeys[ep_dst_rank].dst_buf + put_offset;
 
@@ -877,7 +881,7 @@ ucs_status_t dpu_hc_local_reduce(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_ctx_
     ucp_worker_fence(hc->ucp_worker);
     CTX_LOG("Issue AR accbuf %p getbuf %p count %lu\n", accbuf->buf, getbuf->buf, accbuf->count);
     ucc_mc_reduce_multi(accbuf->buf, getbuf->buf, accbuf->buf,
-                        1, accbuf->count * 0, 0, dtype, op, UCC_MEMORY_TYPE_HOST);
+                        1, accbuf->count, 0, dtype, op, UCC_MEMORY_TYPE_HOST);
     
     // int32_t *gbuf = getbuf->buf;
     // CTX_LOG("## GET DATA %d %d\n", gbuf[0], gbuf[2]);
@@ -1063,15 +1067,15 @@ ucs_status_t dpu_send_init_completion(dpu_hc_t *hc)
     return UCS_OK;
 }
 
-int dpu_dc_reset(dpu_hc_t *hc)
+int dpu_dc_reset(dpu_hc_t *dc)
 {
-    _dpu_flush_host_eps(hc);
-    _dpu_worker_flush(hc);
-    _dpu_hc_buffer_free(hc, &hc->mem_segs.in);
-    _dpu_hc_buffer_free(hc, &hc->mem_segs.out);
-    _dpu_hc_buffer_free(hc, &hc->mem_segs.sync);
-    _dpu_close_host_eps(hc);
-    _dpu_ucx_fini(hc, 1);
+    _dpu_flush_host_eps(dc);
+    _dpu_worker_flush(dc);
+    _dpu_hc_buffer_free(dc, &dc->mem_segs.in);
+    _dpu_hc_buffer_free(dc, &dc->mem_segs.out);
+    _dpu_hc_buffer_free(dc, &dc->mem_segs.sync);
+    _dpu_close_host_eps(dc);
+    _dpu_ucx_fini(dc);
     return UCC_OK;
 }
 
@@ -1083,7 +1087,7 @@ int dpu_hc_reset_job(dpu_hc_t *hc)
     _dpu_hc_buffer_free(hc, &hc->mem_segs.out);
     _dpu_hc_buffer_free(hc, &hc->mem_segs.sync);
     _dpu_close_host_eps(hc);
-    _dpu_ucx_fini(hc, 1);
+    _dpu_ucx_fini(hc);
     printf("# Completed Job Id %d\n", hc->job_id);
     return UCC_OK;
 }

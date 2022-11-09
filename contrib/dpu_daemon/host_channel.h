@@ -33,6 +33,9 @@
 #define ERROR               1
 #define DEFAULT_PORT        12345
 
+#define HOST_COMM_CHANNEL 0
+#define HOST_DATA_CHANNEL 1
+
 #define DPU_MIN(a,b) (((a)<(b))?(a):(b))
 #define DPU_MAX(a,b) (((a)>(b))?(a):(b))
 
@@ -170,6 +173,9 @@ typedef struct dpu_pipeline_t {
 } dpu_pipeline_t;
 
 typedef struct dpu_hc_t {
+    /* Comm or Data channel */
+    int channel_type;
+
     /* TCP/IP stuff */
     char *hname;
     char *ip;
@@ -221,7 +227,7 @@ typedef struct dpu_hc_t {
 int dpu_hc_init(dpu_hc_t *dpu_hc);
 int dpu_hc_accept_job(dpu_hc_t *hc);
 int dpu_hc_connect_localhost_ep(dpu_hc_t *hc);
-int dpu_hc_connect_remote_hosts(dpu_hc_t *hc, dpu_ucc_comm_t *comm, int collect_addrs);
+int dpu_hc_connect_remote_hosts(dpu_hc_t *hc, dpu_ucc_comm_t *comm);
 int dpu_hc_reply(dpu_hc_t *hc, dpu_get_sync_t *coll_sync);
 int dpu_hc_wait(dpu_hc_t *hc, unsigned int coll_id);
 int dpu_hc_reset_pipeline(dpu_hc_t *hc);

@@ -746,7 +746,7 @@ int main(int argc, char **argv)
     // s = getenv("UCC_MC_CPU_REDUCE_NUM_THREADS");
     // if (s) { num_threads = atoi(s); }
     
-    int window_size = 4;
+    int window_size = 1;
     // s = getenv("UCC_TL_DPU_BCAST_WINDOW");
     // if (s) { window_size = atoi(s); }
     hc.window_size = window_size;
@@ -772,7 +772,7 @@ int main(int argc, char **argv)
     dpu_ucc_comm_t comm = {0};
     thread_ctx_t comm_ctx[MAX_THREADS] = {0};
     UCC_CHECK(dpu_ucc_alloc_team(&ucc_glob, &comm));
-    dpu_hc_connect_remote_hosts(&hc, &comm, 1);
+    dpu_hc_connect_remote_hosts(&hc, &comm);
 
     dpu_coll_world_barrier(&comm);
     pthread_barrier_init(&sync_barrier, &barrier_attr, num_threads);
@@ -787,7 +787,7 @@ int main(int argc, char **argv)
         ctx->comm = &comm;
         ctx->dc = malloc(sizeof(dpu_hc_t));
         dpu_dc_create(ctx, ctx->hc, ctx->dc);
-        dpu_hc_connect_remote_hosts(ctx->dc, &comm, 0);
+        dpu_hc_connect_remote_hosts(ctx->dc, &comm);
         pthread_create(&ctx->id, NULL, dpu_comm_thread, ctx);
         dpu_coll_world_barrier(&comm);
     }
