@@ -7,6 +7,7 @@
 #include "tl_dpu.h"
 #include "tl_dpu_coll.h"
 #include "utils/arch/cpu.h"
+#include "core/ucc_team.h"
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -400,6 +401,7 @@ UCC_CLASS_INIT_FUNC(ucc_tl_dpu_context_t,
     }
 
     self->dpu_per_node_cnt = dpu_count;
+    self->world_team_id    = UCC_TEAM_ID_MAX;
 
     tl_info(self->super.super.lib, "context created for %d DPUs", dpu_count);
     return ucc_status;

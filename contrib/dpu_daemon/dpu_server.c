@@ -623,7 +623,7 @@ void *dpu_comm_thread(void *arg)
                 dpu_create_comm_team(ctx, lsync);
                 continue;
 
-            } else if (team_id == UCC_WORLD_TEAM_ID) {
+            } else if (team_id == ctx->comm->world_team_id) {
 
                 /* World team free so Hang up */
                 /* Don't send a response back to Host */
@@ -771,6 +771,7 @@ int main(int argc, char **argv)
 
     dpu_ucc_comm_t comm = {0};
     thread_ctx_t comm_ctx[MAX_THREADS] = {0};
+    UCC_CHECK(dpu_recv_world_team_id(&hc, &comm));
     UCC_CHECK(dpu_ucc_alloc_team(&ucc_glob, &comm));
     dpu_hc_connect_remote_hosts(&hc, &comm);
 

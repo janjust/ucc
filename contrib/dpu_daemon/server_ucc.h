@@ -36,14 +36,13 @@
 #define DPU_MIN(a,b) (((a)<(b))?(a):(b))
 #define DPU_MAX(a,b) (((a)>(b))?(a):(b))
 
-/* team id is uint16_t */
-#define DPU_TEAM_POOL_SIZE (1<<16)
+#define UCC_TEAM_ID_MAX     ((uint16_t)UCC_BIT(15) - 1)
+#define DPU_TEAM_POOL_SIZE  ((UCC_TEAM_ID_MAX) + 1)
 
 struct dpu_hc_t;
 typedef uint32_t ucc_rank_t;
 
 typedef struct {
-    ucc_team_h          ucc_world_team;
     ucc_lib_h           lib;
     ucc_lib_config_h    lib_config;
     struct dpu_hc_t *hc;
@@ -52,6 +51,7 @@ typedef struct {
 typedef struct {
     dpu_ucc_global_t *g;
     ucc_context_h ctx;
+    int world_team_id;
     ucc_team_h team; /* this team always is dpu comm world team */
     ucc_team_h team_pool[DPU_TEAM_POOL_SIZE];
     ucc_rank_t * dpu_team_ctx_ranks[DPU_TEAM_POOL_SIZE]; /* array of lists that

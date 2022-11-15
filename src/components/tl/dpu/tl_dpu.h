@@ -72,7 +72,8 @@ typedef struct ucc_tl_dpu_connect {
 typedef struct ucc_tl_dpu_context {
     ucc_tl_context_t            super;
     ucc_mpool_t                 req_mp;
-    ucc_tl_dpu_context_config_t cfg;   
+    ucc_tl_dpu_context_config_t cfg;
+    int                         world_team_id;
     int                         dpu_per_node_cnt;
     ucc_tl_dpu_connect_t        dpu_ctx_list[MAX_DPU_COUNT];
 } ucc_tl_dpu_context_t;

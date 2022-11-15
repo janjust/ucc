@@ -85,6 +85,7 @@ static ucc_status_t dpu_create_world_team(dpu_ucc_global_t *g, dpu_ucc_comm_t *c
     while (UCC_INPROGRESS == (status = ucc_team_create_test(comm->team))) {
     };
     
+    comm->team_pool[comm->world_team_id] = comm->team;
     return status;
 }
 
@@ -158,8 +159,6 @@ int dpu_ucc_alloc_team(dpu_ucc_global_t *g, dpu_ucc_comm_t *comm)
 
     comm->g = g;
     UCCCHECK_GOTO(dpu_create_world_team(g, comm), free_ctx, status);
-    comm->team_pool[UCC_WORLD_TEAM_ID] = comm->team;
-
     dpu_ucc_barrier(comm->ctx, comm->team);
 
     return status;

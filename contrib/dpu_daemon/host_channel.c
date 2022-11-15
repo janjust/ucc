@@ -764,7 +764,7 @@ ucc_rank_t dpu_get_world_rank(dpu_hc_t *hc,  int dpu_rank, int team_id, thread_c
 {
     ucc_rank_t  world_rank;
 
-    if (team_id == UCC_WORLD_TEAM_ID) {
+    if (team_id == ctx->comm->world_team_id) {
         world_rank = dpu_rank;
     } else {
         world_rank = ctx->comm->dpu_team_ctx_ranks[team_id][dpu_rank];
@@ -779,7 +779,7 @@ ucc_rank_t dpu_get_host_ep_rank(dpu_hc_t *hc,  int host_rank, int team_id, threa
      * its ep_rank */
     ucc_rank_t ep_rank, world_rank;
 
-    if (team_id == UCC_WORLD_TEAM_ID) {
+    if (team_id == ctx->comm->world_team_id) {
         world_rank = host_rank;
     } else {
         world_rank = ctx->comm->host_team_ctx_ranks[team_id][host_rank];
@@ -1036,6 +1036,28 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
         break;
     }
 
+}
+
+ucs_status_t dpu_recv_world_team_id(dpu_hc_t *hc, dpu_ucc_comm_t *comm)
+{
+    ucs_status_t status;
+    ucp_tag_t req_tag = 0;
+    ucp_tag_t tag_mask = 0;
+    ucs_status_ptr_t request;
+
+    ucp_worker_fence(hc->ucp_worker);
+    request = ucp_tag_recv_nbx(hc->ucp_worker,
+            &comm->world_team_id, sizeof(uint16_t),
+            req_tag, tag_mask, &hc->req_param);
+    status = _dpu_request_wait(hc->ucp_worker, request);
+    if (status != UCS_OK) {
+        fprintf(stderr, "failed to recv world team id (%s)\n", ucs_status_string(status));
+        return status;
+    }
+
+    DPU_LOG("Recvd world team id %d\n", comm->world_team_id);
+    comm->team_pool[comm->world_team_id] = comm->team;
+    return UCS_OK;
 }
 
 ucs_status_t dpu_send_init_completion(dpu_hc_t *hc)

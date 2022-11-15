@@ -11,10 +11,6 @@
 #include "coll_score/ucc_coll_score.h"
 #include "../../../core/ucc_service_coll.h"
 
-// For UCC
-#define UCC_WORLD_TEAM_ID 1
-// For OpenMPI
-// #define UCC_WORLD_TEAM_ID 32768
 
 static ucc_status_t _dpu_client_oob_allgather(ucc_tl_dpu_team_t *team, int rail, int num_colls)
 {
@@ -68,23 +64,40 @@ static ucc_status_t _dpu_client_oob_allgather(ucc_tl_dpu_team_t *team, int rail,
     return UCC_OK;
 }
 
+static ucc_status_t _dpu_send_world_team_id(ucc_tl_dpu_team_t *team, int rail)
+{
+    ucp_request_param_t req_param = {0};
+    ucp_tag_t req_tag = 0;
+    ucs_status_ptr_t request;
+    ucc_tl_dpu_context_t *ctx = UCC_TL_DPU_TEAM_CTX(team);
+    ucc_tl_dpu_connect_t *dpu_connect = &ctx->dpu_ctx_list[rail];
+
+    ucp_worker_fence(dpu_connect->ucp_worker);
+    request = ucp_tag_send_nbx(dpu_connect->ucp_ep,
+            &ctx->world_team_id, sizeof(uint16_t),
+            req_tag, &req_param);
+    ucc_tl_dpu_req_wait(dpu_connect->ucp_worker, request);
+    tl_info(ctx->super.super.lib,
+            "Sent world team id %d to DPU rail %d\n", ctx->world_team_id, rail);
+
+    return UCC_OK;
+}
+
 /* Wait for initilization completion notification from dpu */
 static ucc_status_t _dpu_init_completion_wait(ucc_tl_dpu_team_t *team, int rail)
 {
     ucp_request_param_t req_param = {0};
-    ucp_tag_t req_tag = 0, tag_mask = 0; 
+    ucp_tag_t req_tag = 0, tag_mask = 0;
     ucc_tl_dpu_get_sync_t get_sync = {0};
-    ucs_status_ptr_t recv_req;
-    ucc_tl_dpu_connect_t *dpu_connect;
-    ucc_tl_dpu_context_t    *ctx = UCC_TL_DPU_TEAM_CTX(team);
+    ucs_status_ptr_t request;
+    ucc_tl_dpu_context_t *ctx = UCC_TL_DPU_TEAM_CTX(team);
+    ucc_tl_dpu_connect_t *dpu_connect = &ctx->dpu_ctx_list[rail];
 
-    dpu_connect = &ctx->dpu_ctx_list[rail];
     ucp_worker_fence(dpu_connect->ucp_worker);
-    recv_req = ucp_tag_recv_nbx(dpu_connect->ucp_worker,
+    request = ucp_tag_recv_nbx(dpu_connect->ucp_worker,
             &get_sync, sizeof(ucc_tl_dpu_get_sync_t),
             req_tag, tag_mask, &req_param);
-    ucc_tl_dpu_req_wait(dpu_connect->ucp_worker, recv_req);
-
+    ucc_tl_dpu_req_wait(dpu_connect->ucp_worker, request);
     tl_info(ctx->super.super.lib,
             "Received completion notification from DPU rail %d\n", rail);
 
@@ -160,6 +173,9 @@ UCC_CLASS_INIT_FUNC(ucc_tl_dpu_team_t, ucc_base_context_t *tl_context,
 
     tl_info(ctx->super.super.lib,
         "starting: %p team_create team_id %d", self, params->id);
+    if (ctx->world_team_id == UCC_TEAM_ID_MAX) {
+        ctx->world_team_id = params->id;
+    }
 
     self->size      = UCC_TL_TEAM_SIZE(self);
     self->rank      = UCC_TL_TEAM_RANK(self);
@@ -174,14 +190,13 @@ UCC_CLASS_INIT_FUNC(ucc_tl_dpu_team_t, ucc_base_context_t *tl_context,
         dpu_sync->status              = UCC_OPERATION_INITIALIZED;
 
         /* Execute oob allgather on behalf of DPU */
-        if (params->id == UCC_WORLD_TEAM_ID) {
+        if (params->id == ctx->world_team_id) {
             int num_colls   = 2;    // FIXME: how to avoid hardcoding?
+            _dpu_send_world_team_id(self, rail);
             _dpu_client_oob_allgather(self, rail, num_colls);
             _dpu_init_completion_wait(self, rail);
-        }
-
-        /*  avoid preparing the get_sync for teams other than world */
-        if (params->id != UCC_WORLD_TEAM_ID) {
+        } else {
+            /*  avoid preparing the get_sync for teams other than world */
             ucc_status =  ucc_tl_dpu_new_team_create_test(self, rail);
             if (ucc_status != UCC_OK) {
                 tl_error(ctx->super.super.lib,
@@ -249,7 +264,7 @@ ucc_status_t ucc_tl_dpu_team_destroy(ucc_base_team_t *tl_team)
         ++dpu_sync->coll_id_completed;
 
         /* Execute oob allgather on behalf of DPU */
-        if (team_id == UCC_WORLD_TEAM_ID) {
+        if (team_id == ctx->world_team_id) {
             int num_colls = 1;
             _dpu_client_oob_allgather(team, rail, num_colls);
         }

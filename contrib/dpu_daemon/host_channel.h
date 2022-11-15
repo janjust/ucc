@@ -39,11 +39,6 @@
 #define DPU_MIN(a,b) (((a)<(b))?(a):(b))
 #define DPU_MAX(a,b) (((a)>(b))?(a):(b))
 
-// For UCC
-#define UCC_WORLD_TEAM_ID 1
-// For OpenMPI
-// #define UCC_WORLD_TEAM_ID 32768
-
 #ifdef NDEBUG
 #define DPU_LOG(...)
 #define CTX_LOG(...)
@@ -202,6 +197,7 @@ typedef struct dpu_hc_t {
     dpu_pipeline_t  pipeline;
 
     /* remote eps */
+    uint16_t world_team_id;
     uint32_t world_rank;
     uint32_t world_size;
     uint64_t team_rank;
@@ -259,6 +255,7 @@ ucs_status_t dpu_hc_local_reduce(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_ctx_
 ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_ctx_t *ctx);
 ucs_status_t dpu_hc_issue_hangup(dpu_hc_t *dpu_hc, dpu_put_sync_t *sync, thread_ctx_t *ctx);
 ucs_status_t dpu_send_init_completion(dpu_hc_t *hc);
+ucs_status_t dpu_recv_world_team_id(dpu_hc_t *hc, dpu_ucc_comm_t *comm);
 
 size_t dpu_ucc_dt_size(ucc_datatype_t dt);
 int dpu_dc_create(thread_ctx_t *ctx, dpu_hc_t *hc, dpu_hc_t *dc);
