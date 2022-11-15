@@ -325,7 +325,6 @@ int dpu_hc_reset_pipeline(dpu_hc_t *hc)
 {
     dpu_pipeline_t *pipe = &hc->pipeline;
     _dpu_hc_reset_stage(&pipe->stages[0], hc);
-    _dpu_hc_reset_stage(&pipe->stages[1], hc);
     pipe->my_count = pipe->my_offset = 0;
     pipe->count_received = pipe->count_reduced = pipe->count_serviced = 0;
 
@@ -347,27 +346,18 @@ static  int _dpu_hc_init_pipeline(dpu_hc_t *hc)
     if (ret) {
         goto out;
     }
-    ret = _dpu_hc_buffer_alloc(hc, &hc->mem_segs.out, hc->pipeline.buffer_size * 3);
-    if (ret) {
-        goto err_put;
-    }
+
     ret = _dpu_hc_buffer_alloc(hc, &hc->mem_segs.sync, sizeof(dpu_put_sync_t));
     if (ret) {
-        goto err_get;
+        goto err_put;
     }
 
     hc->pipeline.stages[0].accbuf.buf    = (char *)hc->mem_segs.in.base + hc->pipeline.buffer_size * 0;
     hc->pipeline.stages[0].getbuf[0].buf = (char *)hc->mem_segs.in.base + hc->pipeline.buffer_size * 1;
     hc->pipeline.stages[0].getbuf[1].buf = (char *)hc->mem_segs.in.base + hc->pipeline.buffer_size * 2;
 
-    hc->pipeline.stages[1].accbuf.buf    = (char *)hc->mem_segs.out.base + hc->pipeline.buffer_size * 0;
-    hc->pipeline.stages[1].getbuf[0].buf = (char *)hc->mem_segs.out.base + hc->pipeline.buffer_size * 1;
-    hc->pipeline.stages[1].getbuf[1].buf = (char *)hc->mem_segs.out.base + hc->pipeline.buffer_size * 2;
-
     dpu_hc_reset_pipeline(hc);
     goto out;
-err_get:
-    _dpu_hc_buffer_free(hc, &hc->mem_segs.out);
 err_put:
     _dpu_hc_buffer_free(hc, &hc->mem_segs.in);
 out:
@@ -736,19 +726,18 @@ int dpu_hc_wait(dpu_hc_t *hc, uint32_t next_coll_id)
 int dpu_hc_reply(dpu_hc_t *hc, dpu_get_sync_t *coll_sync)
 {
     ucs_status_t status;
+    ucs_status_ptr_t request;
     ucp_tag_t req_tag = 0;
 
     DPU_LOG("Flushing host ep for coll_id: %d\n", coll_sync->coll_id);
     _dpu_worker_flush(hc);
 
-    assert(hc->pipeline.sync_req == NULL);
     ucp_worker_fence(hc->ucp_worker);
     DPU_LOG("Notify host completed coll_id: %u, serviced: %u\n",
             coll_sync->coll_id, coll_sync->count_serviced);
-    hc->pipeline.sync_req = ucp_tag_send_nbx(hc->localhost_ep,
+    request = ucp_tag_send_nbx(hc->localhost_ep,
             coll_sync, sizeof(dpu_get_sync_t), req_tag, &hc->req_param);
-    status = _dpu_request_wait(hc->ucp_worker, hc->pipeline.sync_req);
-    hc->pipeline.sync_req = NULL;
+    status = _dpu_request_wait(hc->ucp_worker, request);
     if (status != UCS_OK) {
         fprintf(stderr, "failed to notify host of completion (%s)\n", ucs_status_string(status));
         return -1;
@@ -911,7 +900,6 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
     dpu_buf_t *accbuf = &stage->accbuf;
     dpu_buf_t *getbuf = &stage->getbuf[stage->get_idx];
     dpu_buf_t *redbuf = &stage->getbuf[stage->red_idx];
-    dpu_buf_t *dummybuf = &pp->stages[1].getbuf[0];
 
     switch(stage->phase) {
         case INIT:
@@ -963,7 +951,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
         if (getbuf->state == IDLE && accbuf->state == IDLE) {
             assert(stage->done_get > stage->done_red);
             getbuf->state = REDUCING;
-            dpu_hc_local_reduce(hc, sync, ctx, stage, accbuf, dummybuf);
+            dpu_hc_local_reduce(hc, sync, ctx, stage, accbuf, getbuf);
             /* Swap Reduce and Get buffers */
             stage->red_idx = stage->get_idx;
             stage->get_idx = (stage->get_idx + 1) % 2;
@@ -1091,7 +1079,6 @@ int dpu_dc_reset(dpu_hc_t *dc)
     _dpu_flush_host_eps(dc);
     _dpu_worker_flush(dc);
     _dpu_hc_buffer_free(dc, &dc->mem_segs.in);
-    _dpu_hc_buffer_free(dc, &dc->mem_segs.out);
     _dpu_hc_buffer_free(dc, &dc->mem_segs.sync);
     _dpu_close_host_eps(dc);
     _dpu_ucx_fini(dc);
@@ -1103,7 +1090,6 @@ int dpu_hc_reset_job(dpu_hc_t *hc)
     _dpu_flush_host_eps(hc);
     _dpu_worker_flush(hc);
     _dpu_hc_buffer_free(hc, &hc->mem_segs.in);
-    _dpu_hc_buffer_free(hc, &hc->mem_segs.out);
     _dpu_hc_buffer_free(hc, &hc->mem_segs.sync);
     _dpu_close_host_eps(hc);
     _dpu_ucx_fini(hc);

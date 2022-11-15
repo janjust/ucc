@@ -156,9 +156,8 @@ typedef struct dpu_stage_t {
 typedef struct dpu_pipeline_t {
     size_t             buffer_size;
     size_t             num_buffers;
-    ucs_status_ptr_t   sync_req;
 
-    dpu_stage_t        stages[2];
+    dpu_stage_t        stages[1];
     size_t             my_count;
     size_t             my_offset;
 
