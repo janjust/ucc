@@ -388,11 +388,6 @@ UCC_CLASS_INIT_FUNC(ucc_tl_dpu_context_t,
         self->dpu_ctx_list[rail].ucp_context                 = ucp_context;
         self->dpu_ctx_list[rail].ucp_worker                  = ucp_worker;
         self->dpu_ctx_list[rail].ucp_ep                      = ucp_ep;
-        self->dpu_ctx_list[rail].inflight                    = 0;
-        self->dpu_ctx_list[rail].coll_id_issued              = 0;
-        self->dpu_ctx_list[rail].coll_id_completed           = 0;
-        self->dpu_ctx_list[rail].get_sync.count_serviced     = 0;
-        self->dpu_ctx_list[rail].get_sync.coll_id            = 0;
     // }
 
     ucc_status = ucc_mpool_init(&self->req_mp, 0,

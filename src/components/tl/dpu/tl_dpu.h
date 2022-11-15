@@ -66,13 +66,7 @@ typedef struct ucc_tl_dpu_get_sync_t {
 typedef struct ucc_tl_dpu_connect {
     ucp_context_h               ucp_context;
     ucp_worker_h                ucp_worker;
-    uint64_t                    rem_ctrl_seg;
-    ucp_rkey_h                  rem_ctrl_seg_key;
-    uint32_t                    coll_id_issued;
-    uint32_t                    coll_id_completed;
-    ucc_tl_dpu_get_sync_t       get_sync; 
     ucp_ep_h                    ucp_ep;
-    volatile size_t             inflight;
 } ucc_tl_dpu_connect_t;
 
 typedef struct ucc_tl_dpu_context {

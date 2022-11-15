@@ -292,6 +292,7 @@ static ucc_status_t ucc_tl_dpu_check_progress(
     for (rail = 0; rail < task->dpu_per_node_cnt; rail++) {
         sub_task = &task->dpu_task_list[rail];
         ucc_tl_dpu_connect_t *dpu_connect = &ctx->dpu_ctx_list[rail];
+        ucc_tl_dpu_sync_t    *dpu_sync = &team->dpu_sync_list[rail];
 
         if (sub_task->status != UCC_TL_DPU_TASK_STATUS_DONE) {
             ucc_tl_dpu_task_req_t *task_reqs = &sub_task->task_reqs;
@@ -300,8 +301,8 @@ static ucc_status_t ucc_tl_dpu_check_progress(
             if (sub_task->get_sync.coll_id == sub_task->put_sync.coll_id &&
                 sub_task->get_sync.count_serviced == sub_task->put_sync.count_total) {
 
-                team->dpu_sync_list[rail].coll_id_completed = ++dpu_connect->coll_id_completed;
-                assert(team->dpu_sync_list[rail].coll_id_completed == sub_task->get_sync.coll_id);
+                ++dpu_sync->coll_id_completed;
+                assert(dpu_sync->coll_id_completed == sub_task->get_sync.coll_id);
                 sub_task->status = UCC_TL_DPU_TASK_STATUS_DONE;
 
                 tl_info(UCC_TL_TEAM_LIB(task->team),
@@ -524,7 +525,7 @@ ucc_status_t ucc_tl_dpu_coll_init(ucc_base_coll_args_t      *coll_args,
 
     for (int rail = 0; rail < ctx->dpu_per_node_cnt; rail++) {
         task->dpu_task_list[rail].status = UCC_TL_DPU_TASK_STATUS_INIT;
-        tl_team->dpu_sync_list[rail].coll_id_issued = ++(ctx->dpu_ctx_list[rail].coll_id_issued);
+        ++tl_team->dpu_sync_list[rail].coll_id_issued;
     }
 
     switch (coll_args->args.coll_type) {

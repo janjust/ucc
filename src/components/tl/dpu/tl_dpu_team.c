@@ -106,9 +106,7 @@ ucc_status_t ucc_tl_dpu_new_team_create_test(ucc_tl_dpu_team_t *team, int rail)
     ucc_tl_dpu_connect_t  *dpu_connect = &ctx->dpu_ctx_list[rail];
     ucc_tl_dpu_sync_t     *dpu_sync = &team->dpu_sync_list[rail];
 
-    mirror.coll_id              = ++dpu_connect->coll_id_issued;
-    dpu_sync->coll_id_issued    = dpu_connect->coll_id_issued;
-
+    mirror.coll_id              = ++dpu_sync->coll_id_issued;
     mirror.create_new_team      = 1;
     mirror.coll_args.coll_type  = UCC_COLL_TYPE_LAST;
     mirror.team_id              = ucc_team->id;
@@ -130,7 +128,7 @@ ucc_status_t ucc_tl_dpu_new_team_create_test(ucc_tl_dpu_team_t *team, int rail)
     tl_info(ctx->super.super.lib, "sending mirror to dpu team, "
             "coll id %u rail %d coll_id_completed %u", 
             mirror.coll_id, rail,
-            dpu_connect->coll_id_completed);
+            dpu_sync->coll_id_completed);
 
     mirror_req = ucp_tag_send_nbx(
             dpu_connect->ucp_ep,
@@ -141,11 +139,11 @@ ucc_status_t ucc_tl_dpu_new_team_create_test(ucc_tl_dpu_team_t *team, int rail)
         return UCC_ERR_NO_MESSAGE;
     }
     ucc_tl_dpu_req_wait(dpu_connect->ucp_worker, mirror_req);
-    dpu_sync->coll_id_completed = ++dpu_connect->coll_id_completed;
+    ++dpu_sync->coll_id_completed;
 
     tl_info(ctx->super.super.lib, 
             "sent mirror to dpu team with rail %d coll_id_completed %u",
-            rail, dpu_connect->coll_id_completed); 
+            rail, dpu_sync->coll_id_completed); 
 
     team->status = UCC_OK;
     return team->status;
@@ -214,7 +212,7 @@ ucc_status_t ucc_tl_dpu_team_destroy(ucc_base_team_t *tl_team)
     ucc_tl_dpu_team_t           *team = ucc_derived_of(tl_team, ucc_tl_dpu_team_t);
     ucc_tl_dpu_context_t        *ctx = UCC_TL_DPU_TEAM_CTX(team);
     uint16_t                    team_id = tl_team->params.id;
-    ucc_tl_dpu_put_sync_t       hangup;
+    ucc_tl_dpu_put_sync_t       hangup = {0};
     ucs_status_ptr_t            hangup_req;
     ucp_request_param_t         req_param = {0};
     ucp_tag_t                   req_tag = 0;
@@ -233,8 +231,7 @@ ucc_status_t ucc_tl_dpu_team_destroy(ucc_base_team_t *tl_team)
         
         memset(&hangup, 0, sizeof(ucc_tl_dpu_put_sync_t));
 
-        hangup.coll_id             = ++dpu_connect->coll_id_issued;
-        dpu_sync->coll_id_issued   = dpu_connect->coll_id_issued;
+        hangup.coll_id             = ++dpu_sync->coll_id_issued;
         hangup.coll_args.coll_type = UCC_COLL_TYPE_LAST;
         hangup.team_id             = team_id;
         hangup.create_new_team     = 0;
@@ -249,7 +246,7 @@ ucc_status_t ucc_tl_dpu_team_destroy(ucc_base_team_t *tl_team)
 
         ucs_status_ptr_t request = ucp_worker_flush_nbx(dpu_connect->ucp_worker, &req_param);
         ucc_tl_dpu_req_wait(dpu_connect->ucp_worker, request);
-        dpu_sync->coll_id_completed = ++dpu_connect->coll_id_completed;
+        ++dpu_sync->coll_id_completed;
 
         /* Execute oob allgather on behalf of DPU */
         if (team_id == UCC_WORLD_TEAM_ID) {
