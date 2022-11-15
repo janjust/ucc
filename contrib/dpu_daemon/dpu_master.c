@@ -187,7 +187,7 @@ static int _dpu_master_spawn_server(dpu_mc_t *mc, char **argv)
         /* Add master_port to environment */
         char pstr[32];
         sprintf(pstr, "%d", mc->server_port);
-        setenv("LISTEN_PORT", pstr, 1);
+        setenv("DPU_SERVER_LISTEN_PORT", pstr, 1);
 
         /* Get location for dpu_master */
         char master_cmd[PATH_MAX], server_cmd[PATH_MAX];

@@ -743,16 +743,16 @@ int main(int argc, char **argv)
 {
     char *s = NULL;
     int num_threads = 8;
-    // s = getenv("UCC_MC_CPU_REDUCE_NUM_THREADS");
-    // if (s) { num_threads = atoi(s); }
+    s = getenv("UCC_TL_DPU_NUM_THREADS");
+    if (s) { num_threads = atoi(s); }
     
     int window_size = 1;
-    // s = getenv("UCC_TL_DPU_BCAST_WINDOW");
-    // if (s) { window_size = atoi(s); }
+    s = getenv("UCC_TL_DPU_BCAST_WINDOW");
+    if (s) { window_size = atoi(s); }
     hc.window_size = window_size;
 
     int listen_port = DEFAULT_PORT;
-    s = getenv("LISTEN_PORT");
+    s = getenv("DPU_SERVER_LISTEN_PORT");
     if (s) { listen_port = atoi(s); }
     hc.port = listen_port;
 
@@ -774,7 +774,6 @@ int main(int argc, char **argv)
     UCC_CHECK(dpu_recv_world_team_id(&hc, &comm));
     UCC_CHECK(dpu_ucc_alloc_team(&ucc_glob, &comm));
     dpu_hc_connect_remote_hosts(&hc, &comm);
-
     dpu_coll_world_barrier(&comm);
     pthread_barrier_init(&sync_barrier, &barrier_attr, num_threads);
     
@@ -790,9 +789,9 @@ int main(int argc, char **argv)
         dpu_dc_create(ctx, ctx->hc, ctx->dc);
         dpu_hc_connect_remote_hosts(ctx->dc, &comm);
         pthread_create(&ctx->id, NULL, dpu_comm_thread, ctx);
-        dpu_coll_world_barrier(&comm);
     }
-    
+
+    dpu_coll_world_barrier(&comm);
     UCS_CHECK(dpu_send_init_completion(&hc));
 
     for (int i=0; i<num_threads; i++) {
