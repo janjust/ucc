@@ -448,7 +448,7 @@ void dpu_wait_for_next_coll(thread_ctx_t *ctx)
     CTX_LOG("Waiting for host to initiate coll id: %u\n", ctx->coll_sync->coll_id);
     dpu_hc_wait(ctx->hc, ctx->coll_sync->coll_id);
     
-    memcpy(&tmp_sync, (dpu_put_sync_t*)ctx->hc->mem_segs.sync.base, sizeof(tmp_sync));
+    memcpy(&tmp_sync, (void*)ctx->hc->mem_segs.sync.base, sizeof(tmp_sync));
     __sync_synchronize();
 }
 
@@ -800,7 +800,7 @@ int main(int argc, char **argv)
     pthread_barrier_destroy(&sync_barrier);
     dpu_coll_world_barrier(&comm);
     dpu_ucc_free_team(&ucc_glob, &comm);
-    
+
     for (int i=0; i<num_threads; i++) {
         thread_ctx_t *ctx = &comm_ctx[i];
         dpu_dc_reset(ctx->dc);

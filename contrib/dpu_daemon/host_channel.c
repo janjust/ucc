@@ -181,19 +181,13 @@ static ucs_status_t _dpu_worker_flush(dpu_hc_t *hc)
 
 static int _dpu_ucx_init(dpu_hc_t *hc)
 {
-    ucs_status_t status;
-    ucp_worker_params_t worker_params;
     int ret = UCC_OK;
-
     ucp_params_t ucp_params = {0};
+    ucp_worker_params_t worker_params = {0};
+    ucs_status_t status;
+
     ucp_params.field_mask = UCP_PARAM_FIELD_FEATURES;
-    if (hc->channel_type == HOST_COMM_CHANNEL) {
-        /* Comm channel uses Send-Recv only */
-        ucp_params.features = UCP_FEATURE_TAG;
-    } else {
-        /* Data channel uses Get-Put only */
-        ucp_params.features = UCP_FEATURE_RMA;
-    }
+    ucp_params.features   = UCP_FEATURE_TAG | UCP_FEATURE_RMA;
 
     status = ucp_init(&ucp_params, NULL, &hc->ucp_ctx);
     if (status != UCS_OK) {
@@ -202,9 +196,10 @@ static int _dpu_ucx_init(dpu_hc_t *hc)
         goto err;
     }
 
-    memset(&worker_params, 0, sizeof(worker_params));
-    worker_params.field_mask = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
-    worker_params.thread_mode = UCS_THREAD_MODE_SINGLE; // Each thread owns its worker
+    /* FIXME: Although each thread owns its worker,
+       multi-thread mode is necessary to prevent errors during finalize */
+    worker_params.field_mask  = UCP_WORKER_PARAM_FIELD_THREAD_MODE;
+    worker_params.thread_mode = UCS_THREAD_MODE_MULTI;
 
     status = ucp_worker_create(hc->ucp_ctx, &worker_params, &hc->ucp_worker);
     if (status != UCS_OK) {
@@ -214,7 +209,7 @@ static int _dpu_ucx_init(dpu_hc_t *hc)
     }
 
     hc->worker_attr.field_mask = UCP_WORKER_ATTR_FIELD_ADDRESS |
-            UCP_WORKER_ATTR_FIELD_ADDRESS_FLAGS;
+                                 UCP_WORKER_ATTR_FIELD_ADDRESS_FLAGS;
     hc->worker_attr.address_flags = UCP_WORKER_ADDRESS_FLAG_NET_ONLY;
     status = ucp_worker_query (hc->ucp_worker, &hc->worker_attr);
     if (UCS_OK != status) {
@@ -461,12 +456,13 @@ static ucs_status_t _dpu_create_remote_host_eps(dpu_hc_t *hc, dpu_ucc_comm_t *co
 
     DPU_LOG("Creating %u remote host eps, addr len %lu\n", hc->world_size, hc->rem_worker_addr_len);
 
-    /* Allgather Host EP addresses */
-    hc->host_eps = calloc(hc->world_size, sizeof(ucp_ep_h));
     if (hc->channel_type == HOST_COMM_CHANNEL) {
+        /* Allgather Host EP addresses */
         hc->remote_addrs = calloc(hc->world_size, rem_worker_addr_len);
         dpu_coll_collect_host_addrs(comm, rem_worker_addr, rem_worker_addr_len, hc->remote_addrs);
     } else {
+        /* Connecting to existing workers,
+           Reuse already collected EP addresses */
         assert(hc->remote_addrs != NULL);
     }
 
@@ -474,8 +470,9 @@ static ucs_status_t _dpu_create_remote_host_eps(dpu_hc_t *hc, dpu_ucc_comm_t *co
                               UCP_EP_PARAM_FIELD_ERR_HANDLER |
                               UCP_EP_PARAM_FIELD_ERR_HANDLING_MODE;
     ep_params.err_mode		= UCP_ERR_HANDLING_MODE_PEER;
-    ep_params.err_handler.cb    = err_cb;
+    ep_params.err_handler.cb = err_cb;
 
+    hc->host_eps = calloc(hc->world_size, sizeof(ucp_ep_h));
     /* Connect to all remote hosts */
     for (i = 0; i < hc->world_size; i++) {
         /* Skip Local Host for Comm channel, Already Connected */
@@ -508,7 +505,7 @@ static int _dpu_close_host_eps(dpu_hc_t *hc)
 {
     ucp_request_param_t param;
     ucs_status_t status;
-    void *close_req;
+    ucs_status_ptr_t close_req;
     int ret = UCC_OK;
     int i;
 
@@ -821,7 +818,7 @@ ucs_status_t dpu_hc_issue_get(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
     CTX_LOG("Issue Get from %d offset %lu src %p dst %p count %lu bytes %lu host_team_size: %d \n",
             ep_src_rank, get_offset, src_addr, dst_addr, count, data_size, host_team_size);
     
-    ucp_worker_fence(hc->ucp_worker);
+    // ucp_worker_fence(hc->ucp_worker);
     getbuf->ucp_req =
             ucp_get_nbx(hc->host_eps[ep_src_rank], dst_addr, data_size,
             (uint64_t)src_addr, hc->host_src_rkeys[ep_src_rank], &hc->req_param);
@@ -856,7 +853,7 @@ ucs_status_t dpu_hc_issue_put(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *s
     // int32_t *pbuf = accbuf->buf;
     // CTX_LOG("## PUT DATA %d %d\n", pbuf[0], pbuf[2]);
     
-    ucp_worker_fence(hc->ucp_worker);
+    // ucp_worker_fence(hc->ucp_worker);
     accbuf->ucp_req =
             ucp_put_nbx(hc->host_eps[ep_dst_rank], src_addr, data_size,
             (uint64_t)dst_addr, hc->host_dst_rkeys[ep_dst_rank], &hc->req_param);
@@ -881,7 +878,7 @@ ucs_status_t dpu_hc_local_reduce(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_ctx_
     ucp_worker_fence(hc->ucp_worker);
     CTX_LOG("Issue AR accbuf %p getbuf %p count %lu\n", accbuf->buf, getbuf->buf, accbuf->count);
     ucc_mc_reduce_multi(accbuf->buf, getbuf->buf, accbuf->buf,
-                        1, accbuf->count, 0, dtype, op, UCC_MEMORY_TYPE_HOST);
+                        1, accbuf->count * 0, 0, dtype, op, UCC_MEMORY_TYPE_HOST);
     
     // int32_t *gbuf = getbuf->buf;
     // CTX_LOG("## GET DATA %d %d\n", gbuf[0], gbuf[2]);
@@ -940,7 +937,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
                 accbuf->ucp_req = NULL;
                 accbuf->state = IDLE;
                 stage->done_get += 1;
-                DPU_LOG("Received %ld bytes into accbuf, gets done %d\n",
+                CTX_LOG("Received %ld bytes into accbuf, gets done %d\n",
                         accbuf->count, stage->done_get);
                 read_completed++;
             }
@@ -953,7 +950,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
                 getbuf->ucp_req = NULL;
                 getbuf->state = IDLE;
                 stage->done_get += 1;
-                DPU_LOG("Received %ld bytes into getbuf[%d], gets done %d\n",
+                CTX_LOG("Received %ld bytes into getbuf[%d], gets done %d\n",
                         getbuf->count, stage->get_idx, stage->done_get);
                 read_completed++;
             }
@@ -976,7 +973,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
             redbuf->state = FREE;
             accbuf->state = IDLE;
             stage->done_red += 1;
-            DPU_LOG("Reduced %ld bytes from getbuf[%d], reds done %d\n",
+            CTX_LOG("Reduced %ld bytes from getbuf[%d], reds done %d\n",
                     redbuf->count, stage->red_idx, stage->done_red);
 
             if (stage->done_red == host_team_size-1) {
@@ -988,7 +985,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
         break;
         case BCAST:
         if (accbuf->state == IDLE && accbuf->count > 0) {
-            DPU_LOG("Broadcasting host_team_size %d done get %d red %d put %d\n",
+            CTX_LOG("Broadcasting host_team_size %d done get %d red %d put %d\n",
                     host_team_size, stage->done_get, stage->done_red, stage->done_put);
             assert(stage->done_get == host_team_size);
             assert(stage->done_red == host_team_size-1);
@@ -1007,7 +1004,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
                 stage->done_put++;
             }
             /* Wait for completion */
-            _dpu_flush_host_eps(hc);
+            // _dpu_flush_host_eps(hc);
             #endif
 
         } else if (accbuf->state == SENDRECV && accbuf->count > 0) {
@@ -1017,7 +1014,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
                 // accbuf->ucp_req = NULL;
                 // stage->done_put++;
                 accbuf->state = IDLE;
-                DPU_LOG("Sent %ld bytes from accbuf, puts done %d\n",
+                CTX_LOG("Sent %ld bytes from accbuf, puts done %d\n",
                         accbuf->count, stage->done_put);
                 
                 if (stage->done_put == host_team_size) {
@@ -1030,7 +1027,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
                 }
             }
         } else {
-            DPU_LOG("Impossible!! %p phase %d state %d\n",
+            CTX_LOG("Impossible!! %p phase %d state %d\n",
                     stage, stage->phase, accbuf->state);
             assert(0);
         }
