@@ -140,7 +140,7 @@ typedef struct dpu_buf_t {
 
 typedef struct dpu_stage_t {
     dpu_buf_t accbuf;
-    dpu_buf_t getbuf[2];
+    dpu_buf_t getbuf[16];
     
     dpu_ar_phase_t phase;
     int get_idx;

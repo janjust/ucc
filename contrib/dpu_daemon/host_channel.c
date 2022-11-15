@@ -336,13 +336,17 @@ int dpu_hc_reset_pipeline(dpu_hc_t *hc)
 static  int _dpu_hc_init_pipeline(dpu_hc_t *hc)
 {
     int i, ret;
+    size_t buffer_size = hc->pipeline.buffer_size;
+    size_t num_buffers = hc->pipeline.num_buffers;
 
-    DPU_LOG("Init pipeline with %zu buffers with size %zu\n",
-            hc->pipeline.num_buffers, hc->pipeline.buffer_size);
-    assert(hc->pipeline.buffer_size > 0);
-    assert(hc->pipeline.num_buffers > 0);
+    DPU_LOG("Init pipeline with %zu get buffers with size %zu\n",
+            num_buffers, buffer_size);
+    assert(buffer_size >= 4096);
+    assert(num_buffers >= 2);
+    assert(num_buffers <= 16);
 
-    ret = _dpu_hc_buffer_alloc(hc, &hc->mem_segs.in, hc->pipeline.buffer_size * 3);
+    /* one extra for accbuf */
+    ret = _dpu_hc_buffer_alloc(hc, &hc->mem_segs.in, buffer_size * (num_buffers + 1));
     if (ret) {
         goto out;
     }
@@ -352,9 +356,10 @@ static  int _dpu_hc_init_pipeline(dpu_hc_t *hc)
         goto err_put;
     }
 
-    hc->pipeline.stages[0].accbuf.buf    = (char *)hc->mem_segs.in.base + hc->pipeline.buffer_size * 0;
-    hc->pipeline.stages[0].getbuf[0].buf = (char *)hc->mem_segs.in.base + hc->pipeline.buffer_size * 1;
-    hc->pipeline.stages[0].getbuf[1].buf = (char *)hc->mem_segs.in.base + hc->pipeline.buffer_size * 2;
+    hc->pipeline.stages[0].accbuf.buf = (char *)hc->mem_segs.in.base;
+    for (i=0; i<num_buffers; i++) {
+        hc->pipeline.stages[0].getbuf[i].buf = (char *)hc->mem_segs.in.base + buffer_size * (i+1);
+    }
 
     dpu_hc_reset_pipeline(hc);
     goto out;
