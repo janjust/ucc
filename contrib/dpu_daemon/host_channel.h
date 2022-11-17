@@ -157,8 +157,11 @@ typedef struct dpu_pipeline_t {
 
     size_t    get_idx;
     size_t    red_idx;
-    size_t    src_rank;
-    size_t    dst_rank;
+    int       src_rank;
+    int       dst_rank;
+    int       done_get;
+    int       done_red;
+    int       done_put;
 } dpu_pipeline_t;
 
 typedef struct dpu_hc_t {

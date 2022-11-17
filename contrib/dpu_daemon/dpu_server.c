@@ -670,7 +670,7 @@ void *dpu_comm_thread(void *arg)
             dpu_hc_progress_allreduce(dc, lsync, ctx);
             assert(pipe->count_serviced == pipe->my_count);
 
-            printf("count total %u my count %zu offset %zu serviced %zu\n",
+            CTX_LOG("count total %u my count %zu offset %zu serviced %zu\n",
                     lsync->count_total, pipe->my_count,
                     pipe->my_offset, pipe->count_serviced);
 
@@ -741,7 +741,7 @@ void _sighandler(int signal)
 int main(int argc, char **argv)
 {
     char *s = NULL;
-    int num_threads = 1;
+    int num_threads = 8;
     s = getenv("UCC_TL_DPU_NUM_THREADS");
     if (s) { num_threads = atoi(s); }
     

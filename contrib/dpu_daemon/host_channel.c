@@ -1060,13 +1060,17 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *dc,
                     (uint64_t)src_addr, dc->host_src_rkeys[ep_src_rank], &dc->req_param);
 
             pipe->src_rank = (src_rank + 1) % host_team_size;
-            pipe->count_received += count;
             pipe->avail_buffs--;
             pipe->get_idx++;
+            pipe->done_get++;
+            if (pipe->done_get == host_team_size) {
+                pipe->count_received += count;
+                pipe->done_get = 0;
+            }
         }
 
         /* Do Compute */
-        if (pipe->count_reduced < pipe->count_received && pipe->red_idx <= pipe->get_idx) {
+        if (pipe->count_reduced <= pipe->count_received && pipe->red_idx <= pipe->get_idx) {
             size_t red_idx = pipe->red_idx % pipe->num_buffers;
             dpu_buf_t *redbuf = &pipe->getbuf[red_idx];
             if (redbuf->state == RECVING) {
@@ -1075,12 +1079,19 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *dc,
                     if (request) ucp_request_free(request);
                     redbuf->state = REDUCING;
                     redbuf->ucp_req = NULL;
-                    pipe->count_reduced  += redbuf->count;
-                    pipe->red_idx++;
-                    pipe->avail_buffs++;
 
-                    /* FIXME */
-                    pipe->count_serviced += redbuf->count;
+                    CTX_LOG("Data received count %lu bytes %lu host_team_size: %d \n",
+                            redbuf->count, redbuf->bytes, host_team_size);
+                    pipe->avail_buffs++;
+                    pipe->red_idx++;
+                    pipe->done_red++;
+
+                    if (pipe->done_red == host_team_size) {
+                        pipe->count_reduced  += redbuf->count;
+                        /* FIXME */
+                        pipe->count_serviced += redbuf->count;
+                        pipe->done_red = 0;
+                    }
                 }
             }
         }
@@ -1089,6 +1100,8 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *dc,
 
         ucp_worker_progress(dc->ucp_worker);
     }
+
+    _dpu_flush_host_eps(dc);
 
     return status;
 }
