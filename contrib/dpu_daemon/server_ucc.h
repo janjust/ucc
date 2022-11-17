@@ -37,7 +37,7 @@
 #define DPU_MAX(a,b) (((a)>(b))?(a):(b))
 
 #define UCC_TEAM_ID_MAX     ((uint16_t)UCC_BIT(15) - 1)
-#define DPU_TEAM_POOL_SIZE  ((UCC_TEAM_ID_MAX) + 1)
+#define DPU_TEAM_POOL_SIZE  ((UCC_TEAM_ID_MAX) * 2)
 
 struct dpu_hc_t;
 typedef uint32_t ucc_rank_t;

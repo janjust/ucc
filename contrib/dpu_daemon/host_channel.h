@@ -126,8 +126,9 @@ typedef enum dpu_ar_phase_t {
 
 typedef enum dpu_buf_state_t {
     FREE,
-    SENDRECV,
+    RECVING,
     REDUCING,
+    SENDING,
     IDLE,
 } dpu_buf_state_t;
 
@@ -136,34 +137,28 @@ typedef struct dpu_buf_t {
     dpu_buf_state_t    state;
     ucs_status_ptr_t   ucp_req;
     size_t             count;
+    size_t             bytes;
 } dpu_buf_t;
 
-typedef struct dpu_stage_t {
+typedef struct dpu_pipeline_t {
     dpu_buf_t accbuf;
     dpu_buf_t getbuf[16];
-    
-    dpu_ar_phase_t phase;
-    int get_idx;
-    int red_idx;
-    int src_rank;
-    int dst_rank;
-    
-    int done_get;
-    int done_red;
-    int done_put;
-} dpu_stage_t;
 
-typedef struct dpu_pipeline_t {
-    size_t             buffer_size;
-    size_t             num_buffers;
+    size_t    buffer_size;
+    size_t    num_buffers;
+    size_t    avail_buffs;
+    size_t    my_count;
+    size_t    my_offset;
 
-    dpu_stage_t        stages[1];
-    size_t             my_count;
-    size_t             my_offset;
+    size_t    count_issued;
+    size_t    count_received;
+    size_t    count_reduced;
+    size_t    count_serviced;
 
-    size_t             count_received;
-    size_t             count_reduced;
-    size_t             count_serviced;
+    size_t    get_idx;
+    size_t    red_idx;
+    size_t    src_rank;
+    size_t    dst_rank;
 } dpu_pipeline_t;
 
 typedef struct dpu_hc_t {
@@ -248,9 +243,11 @@ typedef struct thread_sync_t {
     volatile dpu_buf_t *getbuf;
 } thread_sync_t;
 
+#if 0
 ucs_status_t dpu_hc_issue_get(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *stage, dpu_buf_t *getbuf, thread_ctx_t *ctx);
 ucs_status_t dpu_hc_issue_put(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_stage_t *stage, dpu_buf_t *accbuf, thread_ctx_t *ctx);
 ucs_status_t dpu_hc_local_reduce(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_ctx_t *ctx, dpu_stage_t *stage, dpu_buf_t *accbuf, dpu_buf_t *getbuf);
+#endif
 ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_ctx_t *ctx);
 ucs_status_t dpu_hc_issue_hangup(dpu_hc_t *dpu_hc, dpu_put_sync_t *sync, thread_ctx_t *ctx);
 ucs_status_t dpu_send_init_completion(dpu_hc_t *hc);

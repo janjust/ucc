@@ -185,7 +185,7 @@ static ucc_status_t dpu_coll_do_blocking_alltoall(thread_ctx_t *ctx, dpu_put_syn
             size_t bytes_step = count_step * dt_size;
 
             void * src_addr  = hc->host_rkeys[src_rank].src_buf + src_offset;
-            void * tmp_addr  = hc->pipeline.stages[0].accbuf.buf;
+            void * tmp_addr  = hc->pipeline.accbuf.buf;
             void * dst_addr  = lsync->rkeys.dst_buf + dst_offset;
 
             DPU_LOG("Issue Get from %d src offset %zu count %zu bytes %zu\n",
@@ -266,7 +266,7 @@ static ucc_status_t dpu_coll_do_blocking_alltoallv(thread_ctx_t *ctx, dpu_put_sy
                     src_count, count_done, remaining_elems, count_step);
 
             void * src_addr  = hc->host_rkeys[src_rank].src_buf + src_offset;
-            void * tmp_addr  = hc->pipeline.stages[0].accbuf.buf;
+            void * tmp_addr  = hc->pipeline.accbuf.buf;
             void * dst_addr  = lsync->rkeys.dst_buf + dst_offset;
 
             DPU_LOG("Issue Get from %d src offset %zu count %zu bytes %zu\n",
@@ -603,16 +603,15 @@ void *dpu_comm_thread(void *arg)
         rail        = lsync->rail;
         dpu_per_node_cnt = lsync->dpu_per_node_cnt;
 
-        assert(0 <= team_id && team_id < DPU_TEAM_POOL_SIZE);
-        if (ctx->idx == 0) {
-            dpu_coll_counter[coll_type]++;
-        }
-
         CTX_LOG(
             "Start coll id: %u, type: %d, count total: %lu on team: %u "
             "rail: %d, dpu count: %d, create: %d\n",
             coll_id, coll_type, count_total, team_id, rail, dpu_per_node_cnt, create_team);
-
+        
+        assert(0 <= team_id && team_id < DPU_TEAM_POOL_SIZE);
+        if (ctx->idx == 0) {
+            dpu_coll_counter[coll_type]++;
+        }
 
         if (coll_type == UCC_COLL_TYPE_LAST) {
             if (ctx->idx > 0) {
@@ -652,28 +651,28 @@ void *dpu_comm_thread(void *arg)
             }
             thread_barrier(ctx);
             dpu_import_dc_rkeys(ctx, hc, dc, lsync);
- 
+
+            dpu_pipeline_t *pipe = &dc->pipeline;
             ucc_datatype_t dtype = lsync->coll_args.src.info.datatype;
             size_t dt_size = dpu_ucc_dt_size(dtype);
-            dc->pipeline.my_count  = lsync->count_total / dpu_team_size;
-            dc->pipeline.my_offset = dc->pipeline.my_count * dt_size * dpu_team_rank;
+            pipe->my_count  = lsync->count_total / dpu_team_size;
+            pipe->my_offset = pipe->my_count * dt_size * dpu_team_rank;
             if (dpu_team_rank == dpu_team_size - 1) {
-                dc->pipeline.my_count += lsync->count_total % dpu_team_size;
+                pipe->my_count += lsync->count_total % dpu_team_size;
             }
 
             /* Adjust count and offset for thread id */
-            dc->pipeline.my_count /= ctx->nth;
-            dc->pipeline.my_offset += dc->pipeline.my_count * dt_size * ctx->idx;
+            pipe->my_count /= ctx->nth;
+            pipe->my_offset += pipe->my_count * dt_size * ctx->idx;
             CTX_LOG("count total %u my count %zu offset %zu\n",
-                    lsync->count_total, dc->pipeline.my_count, dc->pipeline.my_offset);
+                    lsync->count_total, pipe->my_count, pipe->my_offset);
 
-            while (dc->pipeline.count_serviced < dc->pipeline.my_count) {
-                dpu_hc_progress_allreduce(dc, lsync, ctx);
-            }
+            dpu_hc_progress_allreduce(dc, lsync, ctx);
+            assert(pipe->count_serviced == pipe->my_count);
 
-            CTX_LOG("count total %u my count %zu offset %zu serviced %zu\n",
-                    lsync->count_total, dc->pipeline.my_count,
-                    dc->pipeline.my_offset, dc->pipeline.count_serviced);
+            printf("count total %u my count %zu offset %zu serviced %zu\n",
+                    lsync->count_total, pipe->my_count,
+                    pipe->my_offset, pipe->count_serviced);
 
             thread_barrier(ctx);
             if (ctx->idx == 0) {
@@ -742,7 +741,7 @@ void _sighandler(int signal)
 int main(int argc, char **argv)
 {
     char *s = NULL;
-    int num_threads = 8;
+    int num_threads = 1;
     s = getenv("UCC_TL_DPU_NUM_THREADS");
     if (s) { num_threads = atoi(s); }
     
