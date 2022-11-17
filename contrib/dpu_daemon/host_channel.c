@@ -780,247 +780,22 @@ ucc_rank_t dpu_get_host_ep_rank(dpu_hc_t *hc,  int host_rank, int team_id, threa
     return ep_rank;
 }
 
-#if 0
-ucs_status_t dpu_hc_issue_get(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_buf_t *getbuf, thread_ctx_t *ctx)
+ucs_status_t dpu_hc_local_reduce(dpu_hc_t *dc, dpu_put_sync_t *sync, thread_ctx_t *ctx, dpu_buf_t *accbuf, dpu_buf_t *getbuf)
 {
-    assert(getbuf->state == FREE && getbuf->ucp_req == NULL);
-    dpu_pipeline_t *pipe = &hc->pipeline;
-    uint32_t host_team_size = sync->num_ranks;
-
-    ucc_datatype_t dtype = sync->coll_args.src.info.datatype;
-    size_t dt_size = dpu_ucc_dt_size(dtype);
-    size_t remaining_elems = pipe->my_count - pipe->count_received;
-    size_t count = DPU_MIN(pipe->buffer_size/dt_size, remaining_elems);
-    size_t get_offset = pipe->my_offset + pipe->count_received * dt_size;
-    int src_rank = pipe->src_rank;
-    int ep_src_rank = dpu_get_host_ep_rank(hc, src_rank, sync->team_id, ctx);
-
-    assert(src_rank < host_team_size);
-
-    if (0 == count) {
-        return UCS_ERR_NO_RESOURCE;
-    }
-
-    size_t data_size = count * dt_size;
-    void *src_addr = hc->host_rkeys[ep_src_rank].src_buf + get_offset;
-    void *dst_addr = getbuf->buf;
-
-    CTX_LOG("Issue Get from %d offset %lu src %p dst %p count %lu bytes %lu host_team_size: %d \n",
-            ep_src_rank, get_offset, src_addr, dst_addr, count, data_size, host_team_size);
-    
-    ucp_worker_fence(hc->ucp_worker);
-    getbuf->state = RECVING;
-    getbuf->count = count;
-    getbuf->bytes = data_size;
-    getbuf->ucp_req =
-            ucp_get_nbx(hc->host_eps[ep_src_rank], dst_addr, data_size,
-            (uint64_t)src_addr, hc->host_src_rkeys[ep_src_rank], &hc->req_param);
-
-    pipe->src_rank = (src_rank + 1) % host_team_size;
-    return UCS_OK;
-}
-
-ucs_status_t dpu_hc_issue_put(dpu_hc_t *hc, dpu_put_sync_t *sync, dpu_buf_t *accbuf, thread_ctx_t *ctx)
-{
-    dpu_pipeline_t *pipe = &hc->pipeline;
-    uint32_t host_team_size = sync->num_ranks;
-    ucc_datatype_t dtype = sync->coll_args.src.info.datatype;
-    size_t dt_size = dpu_ucc_dt_size(dtype);
-    size_t count = accbuf->count;
-    size_t put_offset = pipe->my_offset + pipe->count_serviced * dt_size;
-    int dst_rank = pipe->dst_rank;
-    int ep_dst_rank = dpu_get_host_ep_rank(hc, dst_rank, sync->team_id, ctx);
-
-    assert(dst_rank < host_team_size);
-
-    size_t data_size = count * dt_size;
-    void *src_addr = accbuf->buf;
-    void *dst_addr = hc->host_rkeys[ep_dst_rank].dst_buf + put_offset;
-
-    CTX_LOG("Issue Put to %d offset %lu src %p dst %p count %lu bytes %lu host_team_size: %d\n",
-            dst_rank, put_offset, src_addr, dst_addr, count, data_size, host_team_size);
-    assert(count > 0 && dt_size == accbuf->bytes && accbuf->ucp_req == NULL);
-
-    ucp_worker_fence(hc->ucp_worker);
-    accbuf->state = SENDING;
-    accbuf->ucp_req =
-            ucp_put_nbx(hc->host_eps[ep_dst_rank], src_addr, data_size,
-            (uint64_t)dst_addr, hc->host_dst_rkeys[ep_dst_rank], &hc->req_param);
-
-    pipe->dst_rank = (dst_rank + 1) % host_team_size;
-    return UCS_OK;
-}
-
-ucs_status_t dpu_hc_local_reduce(dpu_hc_t *hc, dpu_put_sync_t *sync, thread_ctx_t *ctx, dpu_buf_t *accbuf, dpu_buf_t *getbuf)
-{
-    assert(accbuf->state == IDLE && accbuf->ucp_req == NULL);
-    assert(getbuf->state == IDLE && getbuf->ucp_req == NULL);
+    assert(accbuf->state == REDUCING && accbuf->ucp_req == NULL);
+    assert(getbuf->state == REDUCING && getbuf->ucp_req == NULL);
     assert(accbuf->count == getbuf->count);
 
-    accbuf->state = REDUCING;
-    getbuf->state = REDUCING;
-
-    ucc_datatype_t dtype = sync->coll_args.src.info.datatype;
+    ucc_datatype_t dtype  = sync->coll_args.src.info.datatype;
     ucc_reduction_op_t op = sync->coll_args.op;
 
-    ucp_worker_fence(hc->ucp_worker);
+    ucp_worker_fence(dc->ucp_worker);
     CTX_LOG("Issue AR accbuf %p getbuf %p count %lu\n", accbuf->buf, getbuf->buf, accbuf->count);
     ucc_mc_reduce_multi(accbuf->buf, getbuf->buf, accbuf->buf,
-                        1, accbuf->count * 0, 0, dtype, op, UCC_MEMORY_TYPE_HOST);
-    
+                        1, accbuf->count, 0, dtype, op, UCC_MEMORY_TYPE_HOST);
+
     return UCS_OK;
 }
-
-ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *hc,
-                    dpu_put_sync_t *sync,
-                    thread_ctx_t *ctx)
-{
-    int i, j;
-    ucc_status_t status;
-    ucs_status_ptr_t request;
-    dpu_pipeline_t *pp = &hc->pipeline;
-    uint32_t host_team_size = sync->num_ranks;
-    assert(host_team_size >= 1);
-    int read_completed = 0;
-
-    for (i=0; i<1; i++) {
-        if (ucp_worker_progress(hc->ucp_worker)) {
-            break;
-        }
-    }
-    
-
-    size_t num_buffers = pp->num_buffers;
-    dpu_stage_t *stage = &pp->stages[0];
-    dpu_buf_t *accbuf = &stage->accbuf;
-    dpu_buf_t *getbuf = &stage->getbuf[stage->get_idx];
-    dpu_buf_t *redbuf = &stage->getbuf[stage->red_idx];
-
-    switch(stage->phase) {
-        case INIT:
-        if (accbuf->state == FREE) {
-            stage->src_rank = stage->dst_rank = sync->host_team_rank;
-            assert(stage->done_get == 0);
-            dpu_hc_issue_get(hc, sync, stage, accbuf, ctx);
-            /* Issue next Get from peer host immediately since
-               read from own host only uses PCIe Link */
-            stage->phase = REDUCE;
-        }
-        break;
-        case REDUCE:
-        read_completed = 0;
-        if (getbuf->state == FREE && stage->done_get < host_team_size) {
-            dpu_hc_issue_get(hc, sync, stage, getbuf, ctx);
-            /* Advance Get buffer to next */
-            stage->get_idx = (stage->get_idx + 1) % num_buffers;
-        }
-        /* Progress Read from own host if needed */
-        if (accbuf->state == SENDRECV && accbuf->count > 0) {
-            request = accbuf->ucp_req;
-            if (_dpu_req_test(request) == UCS_OK) {
-                if (request) ucp_request_free(request);
-                accbuf->ucp_req = NULL;
-                accbuf->state = IDLE;
-                stage->done_get += 1;
-                CTX_LOG("Received %ld bytes into accbuf, gets done %d\n",
-                        accbuf->count, stage->done_get);
-                read_completed++;
-            }
-        }
-        /* Progress Read from remote host */
-        if (getbuf->state == SENDRECV && getbuf->count > 0) {
-            request = getbuf->ucp_req;
-            if (_dpu_req_test(request) == UCS_OK) {
-                if (request) ucp_request_free(request);
-                getbuf->ucp_req = NULL;
-                getbuf->state = IDLE;
-                stage->done_get += 1;
-                CTX_LOG("Received %ld bytes into getbuf[%d], gets done %d\n",
-                        getbuf->count, stage->get_idx, stage->done_get);
-                read_completed++;
-            }
-        }
-        if (read_completed > 0) {
-            if (stage->done_get == host_team_size) {
-                pp->count_received += accbuf->count;
-            }
-        }
-        if (redbuf->state == IDLE && accbuf->state == IDLE) {
-            assert(stage->done_get > stage->done_red);
-            getbuf->state = REDUCING;
-            dpu_hc_local_reduce(hc, sync, ctx, stage, accbuf, redbuf);
-        }
-        if (redbuf->state == REDUCING && accbuf->state == REDUCING) {
-            /* Blocking reduce will always be completed */
-            redbuf->state = FREE;
-            accbuf->state = IDLE;
-            stage->done_red += 1;
-            CTX_LOG("Reduced %ld bytes from getbuf[%d], reds done %d\n",
-                    redbuf->count, stage->red_idx, stage->done_red);
-            stage->red_idx = (stage->red_idx + 1) % num_buffers;
-
-            if (stage->done_red == host_team_size-1) {
-                /* Start broadcast */
-                stage->phase = BCAST;
-                pp->count_reduced += accbuf->count;
-            }
-        }
-        break;
-        case BCAST:
-        if (accbuf->state == IDLE && accbuf->count > 0) {
-            CTX_LOG("Broadcasting host_team_size %d done get %d red %d put %d\n",
-                    host_team_size, stage->done_get, stage->done_red, stage->done_put);
-            assert(stage->done_get == host_team_size);
-            assert(stage->done_red == host_team_size-1);
-            assert(stage->done_put < host_team_size);
-
-            #if 0
-            dpu_hc_issue_put(hc, sync, stage, accbuf, ctx);
-            #else
-            window_size = DPU_MIN(hc->window_size, (host_team_size-stage->done_put));
-            /* Issue a window of RDMA writes */
-            for (int j=0; j<window_size; j++) {
-                dpu_hc_issue_put(hc, sync, stage, accbuf, ctx);
-                request = accbuf->ucp_req;
-                if (request) ucp_request_free(request);
-                accbuf->ucp_req = NULL;
-                stage->done_put++;
-            }
-            /* Wait for completion */
-            _dpu_flush_host_eps(hc);
-            #endif
-
-        } else if (accbuf->state == SENDRECV && accbuf->count > 0) {
-            request = accbuf->ucp_req;
-            if (_dpu_req_test(request) == UCS_OK) {
-                // if (request) ucp_request_free(request);
-                // accbuf->ucp_req = NULL;
-                // stage->done_put++;
-                accbuf->state = IDLE;
-                CTX_LOG("Sent %ld bytes from accbuf, puts done %d\n",
-                        accbuf->count, stage->done_put);
-                
-                if (stage->done_put == host_team_size) {
-                    /* Done with this stage */
-                    pp->count_serviced += accbuf->count;
-                    /* Reset this stage counters */
-                    _dpu_hc_reset_stage(stage, hc);
-                    /* Allow next stage to start */
-                    stage->phase = INIT;
-                }
-            }
-        } else {
-            CTX_LOG("Impossible!! %p phase %d state %d\n",
-                    stage, stage->phase, accbuf->state);
-            assert(0);
-        }
-        break;
-        default:
-        break;
-    }
-
-}
-#endif
 
 ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *dc,
                     dpu_put_sync_t *sync,
@@ -1032,11 +807,15 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *dc,
     size_t dt_size = dpu_ucc_dt_size(dtype);
     uint32_t host_team_size = sync->num_ranks;
     dpu_buf_t *accbuf = &pipe->accbuf;
+    ucs_status_ptr_t requests[128]; // FIXME
 
     while (pipe->count_serviced < pipe->my_count) {
 
         /* Issue RDMA Read */
-        if (pipe->count_received < pipe->my_count && pipe->avail_buffs) {
+        if ((pipe->count_received < pipe->my_count)
+            && (pipe->avail_buffs > 0)
+            && (accbuf->state == FREE || accbuf->state == REDUCING))
+        {
             size_t remaining_elems = pipe->my_count - pipe->count_received;
             size_t get_idx = pipe->get_idx % pipe->num_buffers;
             size_t count = DPU_MIN(pipe->buffer_size/dt_size, remaining_elems);
@@ -1045,13 +824,14 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *dc,
             
             int src_rank = pipe->src_rank;
             int ep_src_rank = dpu_get_host_ep_rank(dc, src_rank, sync->team_id, ctx);
-            dpu_buf_t *getbuf = &pipe->getbuf[get_idx];
+            dpu_buf_t *getbuf = accbuf->state == FREE ? accbuf : &pipe->getbuf[get_idx];
             void *src_addr = dc->host_rkeys[ep_src_rank].src_buf + get_offset;
             void *dst_addr = getbuf->buf;
 
             CTX_LOG("Issue Get from %d offset %lu src %p dst %p count %lu bytes %lu host_team_size: %d \n",
                     ep_src_rank, get_offset, src_addr, dst_addr, count, data_size, host_team_size);
 
+            assert(getbuf->state == FREE);
             ucp_worker_fence(dc->ucp_worker);
             getbuf->state = RECVING;
             getbuf->count = count;
@@ -1061,8 +841,12 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *dc,
                     (uint64_t)src_addr, dc->host_src_rkeys[ep_src_rank], &dc->req_param);
 
             pipe->src_rank = (src_rank + 1) % host_team_size;
-            pipe->avail_buffs--;
-            pipe->get_idx++;
+            if (getbuf != accbuf) {
+                /* Consume one Get buffer */
+                pipe->avail_buffs--;
+                pipe->get_idx++;
+            }
+
             pipe->done_get++;
             if (pipe->done_get == host_team_size) {
                 pipe->count_received += count;
@@ -1070,38 +854,49 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *dc,
             }
         }
 
-        /* Do Compute */
-        if (pipe->count_reduced <= pipe->count_received && pipe->red_idx <= pipe->get_idx) {
-            size_t red_idx = pipe->red_idx % pipe->num_buffers;
-            dpu_buf_t *redbuf = &pipe->getbuf[red_idx];
-            if (redbuf->state == RECVING) {
-                ucs_status_ptr_t request = redbuf->ucp_req;
-                if (_dpu_req_test(request) == UCS_OK) {
-                    if (request) ucp_request_free(request);
-                    redbuf->state = REDUCING;
-                    redbuf->ucp_req = NULL;
-                    accbuf->state = REDUCING; // FIXME
-                    accbuf->count = redbuf->count;
-                    accbuf->bytes = redbuf->bytes;
+        if (accbuf->state == RECVING) {
+            ucs_status_ptr_t request = accbuf->ucp_req;
+            if (_dpu_req_test(request) == UCS_OK) {
+                if (request) ucp_request_free(request);
+                accbuf->state = REDUCING;
+                accbuf->ucp_req = NULL;
 
-                    CTX_LOG("Data received count %lu bytes %lu host_team_size: %d \n",
-                            redbuf->count, redbuf->bytes, host_team_size);
-                    
-                    pipe->avail_buffs++;
-                    pipe->red_idx++;
-                    pipe->done_red++;
+                CTX_LOG("Data received to ACCBUF count %lu bytes %lu host_team_size: %d \n",
+                        accbuf->count, accbuf->bytes, host_team_size);
+            }
+        }
 
-                    if (pipe->done_red == host_team_size) {
-                        accbuf->state = REDUCED;
-                        pipe->count_reduced += redbuf->count;
-                        pipe->done_red = 0;
-                    }
+        size_t red_idx = pipe->red_idx % pipe->num_buffers;
+        dpu_buf_t *redbuf = &pipe->getbuf[red_idx];
+        if (accbuf->state == REDUCING && redbuf->state == RECVING) {
+            ucs_status_ptr_t request = redbuf->ucp_req;
+            if (_dpu_req_test(request) == UCS_OK) {
+                if (request) ucp_request_free(request);
+                redbuf->state = REDUCING;
+                redbuf->ucp_req = NULL;
+
+                CTX_LOG("Data received to GETBUF count %lu bytes %lu host_team_size: %d \n",
+                        redbuf->count, redbuf->bytes, host_team_size);
+                
+                dpu_hc_local_reduce(dc, sync, ctx, accbuf, redbuf);
+                /* Release one Get buffer */
+                redbuf->state = FREE;
+                pipe->avail_buffs++;
+                pipe->red_idx++;
+                pipe->done_red++;
+
+                if (pipe->done_red == host_team_size-1) {
+                    accbuf->state = REDUCED;
+                    pipe->count_reduced += redbuf->count;
+                    pipe->done_red = 0;
                 }
             }
         }
 
         /* Issue RDMA Writes */
-        if (pipe->count_serviced < pipe->count_reduced && accbuf->state == REDUCED) {
+        if ((pipe->count_serviced < pipe->count_reduced)
+            && (accbuf->state == REDUCED))
+        {
             accbuf->state = SENDING;
             size_t count = accbuf->count;
             size_t data_size = accbuf->bytes;
@@ -1118,15 +913,17 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *dc,
                         dst_rank, put_offset, src_addr, dst_addr, count, data_size, host_team_size);
             
                 ucp_worker_fence(dc->ucp_worker);
-                ucs_status_ptr_t request =
+                requests[i] =
                         ucp_put_nbx(dc->host_eps[ep_dst_rank], src_addr, data_size,
                         (uint64_t)dst_addr, dc->host_dst_rkeys[ep_dst_rank], &dc->req_param);
-                if (request) ucp_request_free(request);
                 pipe->dst_rank = (dst_rank + 1) % host_team_size;
             }
 
             /* Wait for all write completions */
-            _dpu_flush_host_eps(dc);
+            for (int i=0; i<host_team_size; i++) {
+                _dpu_request_wait(dc->ucp_worker, requests[i]);
+            }
+            // _dpu_flush_host_eps(dc);
             pipe->count_serviced += accbuf->count;
             accbuf->state = FREE;
             accbuf->count = 0;
