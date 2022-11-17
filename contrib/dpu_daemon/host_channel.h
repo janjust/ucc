@@ -117,17 +117,11 @@ typedef struct dpu_thread_sync_t {
     volatile int8_t done[MAX_THREADS];
 } dpu_thread_sync_t;
 
-typedef enum dpu_ar_phase_t {
-    WAIT,
-    INIT,
-    REDUCE,
-    BCAST,
-} dpu_ar_phase_t;
-
 typedef enum dpu_buf_state_t {
     FREE,
     RECVING,
     REDUCING,
+    REDUCED,
     SENDING,
     IDLE,
 } dpu_buf_state_t;
