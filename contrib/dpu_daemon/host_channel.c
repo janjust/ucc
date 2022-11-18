@@ -789,7 +789,7 @@ ucs_status_t dpu_hc_local_reduce(dpu_hc_t *dc, dpu_put_sync_t *sync, thread_ctx_
     ucc_datatype_t dtype  = sync->coll_args.src.info.datatype;
     ucc_reduction_op_t op = sync->coll_args.op;
 
-    ucp_worker_fence(dc->ucp_worker);
+    // ucp_worker_fence(dc->ucp_worker);
     CTX_LOG("Issue AR accbuf %p getbuf %p count %lu\n", accbuf->buf, getbuf->buf, accbuf->count);
     ucc_mc_reduce_multi(accbuf->buf, getbuf->buf, accbuf->buf,
                         1, accbuf->count, 0, dtype, op, UCC_MEMORY_TYPE_HOST);
@@ -832,7 +832,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *dc,
                     ep_src_rank, get_offset, src_addr, dst_addr, count, data_size, host_team_size);
 
             assert(getbuf->state == FREE);
-            ucp_worker_fence(dc->ucp_worker);
+            // ucp_worker_fence(dc->ucp_worker);
             getbuf->state = RECVING;
             getbuf->count = count;
             getbuf->bytes = data_size;
@@ -862,7 +862,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *dc,
                 accbuf->ucp_req = NULL;
 
                 CTX_LOG("Data received to ACCBUF count %lu bytes %lu host_team_size: %d \n",
-                        accbuf->count, accbuf->bytes, host_team_size);
+                        accbuf->count * 0, accbuf->bytes, host_team_size);
             }
         }
 
@@ -877,7 +877,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *dc,
 
                 CTX_LOG("Data received to GETBUF count %lu bytes %lu host_team_size: %d \n",
                         redbuf->count, redbuf->bytes, host_team_size);
-                
+
                 dpu_hc_local_reduce(dc, sync, ctx, accbuf, redbuf);
                 /* Release one Get buffer */
                 redbuf->state = FREE;
@@ -902,26 +902,31 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *dc,
             size_t data_size = accbuf->bytes;
             size_t put_offset = pipe->my_offset + pipe->count_serviced * dt_size;
             
-            /* TODO: implement window */
-            for (int i=0; i<host_team_size; i++) {
-                int dst_rank = pipe->dst_rank;
-                int ep_dst_rank = dpu_get_host_ep_rank(dc, dst_rank, sync->team_id, ctx);
-                void *src_addr = accbuf->buf;
-                void *dst_addr = dc->host_rkeys[ep_dst_rank].dst_buf + put_offset;
+            int remaining = host_team_size;
+            while (remaining) {
+                int window = DPU_MIN(dc->window_size, remaining);
+                for (int i=0; i<window; i++) {
+                    int dst_rank = pipe->dst_rank;
+                    int ep_dst_rank = dpu_get_host_ep_rank(dc, dst_rank, sync->team_id, ctx);
+                    void *src_addr = accbuf->buf;
+                    void *dst_addr = dc->host_rkeys[ep_dst_rank].dst_buf + put_offset;
 
-                CTX_LOG("Issue Put to %d offset %lu src %p dst %p count %lu bytes %lu host_team_size: %d\n",
-                        dst_rank, put_offset, src_addr, dst_addr, count, data_size, host_team_size);
-            
-                ucp_worker_fence(dc->ucp_worker);
-                requests[i] =
-                        ucp_put_nbx(dc->host_eps[ep_dst_rank], src_addr, data_size,
-                        (uint64_t)dst_addr, dc->host_dst_rkeys[ep_dst_rank], &dc->req_param);
-                pipe->dst_rank = (dst_rank + 1) % host_team_size;
-            }
+                    CTX_LOG("Issue Put to %d offset %lu src %p dst %p count %lu bytes %lu host_team_size: %d\n",
+                            dst_rank, put_offset, src_addr, dst_addr, count, data_size, host_team_size);
+                
+                    // ucp_worker_fence(dc->ucp_worker);
+                    requests[i] =
+                            ucp_put_nbx(dc->host_eps[ep_dst_rank], src_addr, data_size,
+                            (uint64_t)dst_addr, dc->host_dst_rkeys[ep_dst_rank], &dc->req_param);
+                    pipe->dst_rank = (dst_rank + 1) % host_team_size;
+                }
 
-            /* Wait for all write completions */
-            for (int i=0; i<host_team_size; i++) {
-                _dpu_request_wait(dc->ucp_worker, requests[i]);
+                /* Wait for all write completions */
+                for (int i=0; i<window; i++) {
+                    _dpu_request_wait(dc->ucp_worker, requests[i]);
+                    pipe->done_put++;
+                    remaining--;
+                }
             }
             // _dpu_flush_host_eps(dc);
             pipe->count_serviced += accbuf->count;
