@@ -713,14 +713,8 @@ int dpu_hc_wait(dpu_hc_t *hc, uint32_t next_coll_id)
             req_tag, tag_mask, &req_param);
     status = _dpu_request_wait(hc->ucp_worker, recv_req);
 
+    /* This is not an error due to multiple teams sending different coll ids */
     DPU_LOG("Got next coll id from host: %u was expecting %u\n", lsync->coll_id, next_coll_id);
-    assert(lsync->coll_id == next_coll_id);
-
-    host_rkey_t *rkeys = &lsync->rkeys;
-
-    status = ucp_ep_rkey_unpack(hc->localhost_ep, (void*)rkeys->src_rkey_buf, &hc->src_rkey);
-
-    status = ucp_ep_rkey_unpack(hc->localhost_ep, (void*)rkeys->dst_rkey_buf, &hc->dst_rkey);
 
     return 0;
 }
@@ -745,8 +739,6 @@ int dpu_hc_reply(dpu_hc_t *hc, dpu_get_sync_t *coll_sync)
         return -1;
     }
 
-    ucp_rkey_destroy(hc->src_rkey);
-    ucp_rkey_destroy(hc->dst_rkey);
     dpu_hc_reset_pipeline(hc);
     return 0;
 }

@@ -181,8 +181,6 @@ typedef struct dpu_hc_t {
     size_t rem_worker_addr_len;
     ucp_ep_h localhost_ep;
     uint64_t sync_addr;
-    ucp_rkey_h src_rkey;
-    ucp_rkey_h dst_rkey;
 
     /* pipeline buffer */
     dpu_pipeline_t  pipeline;

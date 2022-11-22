@@ -204,7 +204,7 @@ static ucc_status_t dpu_coll_do_blocking_alltoall(thread_ctx_t *ctx, dpu_put_syn
             ucp_worker_fence(hc->ucp_worker);
             ucp_req = ucp_put_nbx(
                 hc->localhost_ep, tmp_addr, bytes_step, (uint64_t)dst_addr,
-                hc->dst_rkey, &hc->req_param);
+                hc->host_dst_rkeys[team_rank], &hc->req_param);
             status = _dpu_request_wait(hc->ucp_worker, ucp_req);
             if (status != UCS_OK) {
                 return UCC_ERR_NO_RESOURCE;
@@ -285,7 +285,7 @@ static ucc_status_t dpu_coll_do_blocking_alltoallv(thread_ctx_t *ctx, dpu_put_sy
             ucp_worker_fence(hc->ucp_worker);
             ucp_req = ucp_put_nbx(
                 hc->localhost_ep, tmp_addr, bytes_step, (uint64_t)dst_addr,
-                hc->dst_rkey, &hc->req_param);
+                hc->host_dst_rkeys[team_rank], &hc->req_param);
             status = _dpu_request_wait(hc->ucp_worker, ucp_req);
             if (status != UCS_OK) {
                 return UCC_ERR_NO_RESOURCE;
@@ -345,31 +345,12 @@ static void dpu_coll_collect_host_rkeys(thread_ctx_t *ctx, dpu_hc_t *hc, dpu_put
     }
     UCC_CHECK(ucc_collective_finalize(request));
 
-    /*memset(hc->host_rkeys, 0, sizeof(host_rkey_t) * hc->world_size);
-
-    for (i = 0; i < team_size; i++) {
-        ep_rank  = dpu_get_world_rank(hc, i, lsync->team_id, ctx);
-        memcpy(&hc->host_rkeys[ep_rank], &hc->world_lsyncs[i].rkeys, sizeof(host_rkey_t));
-        assert(NULL != hc->host_rkeys[ep_rank].src_rkey_buf);
-        assert(NULL != hc->host_rkeys[ep_rank].dst_rkey_buf);
-        assert(0    <  hc->host_rkeys[ep_rank].src_rkey_len);
-        assert(0    <  hc->host_rkeys[ep_rank].dst_rkey_len);
-        status = ucp_ep_rkey_unpack(hc->host_eps[ep_rank], (void*)hc->host_rkeys[ep_rank].src_rkey_buf, &hc->host_src_rkeys[ep_rank]);
-        assert(UCS_OK == status);
-        assert(NULL != hc->host_rkeys[ep_rank].src_buf);
-        status = ucp_ep_rkey_unpack(hc->host_eps[ep_rank], (void*)hc->host_rkeys[ep_rank].dst_rkey_buf, &hc->host_dst_rkeys[ep_rank]);
-        assert(UCS_OK == status);
-        assert(NULL != hc->host_rkeys[ep_rank].dst_buf);
-        CTX_LOG("Rank %d with EP Rank %d  team_id  %d src buf %p dst buf %p\n", 
-                i, ep_rank, lsync->team_id, hc->host_rkeys[ep_rank].src_buf, hc->host_rkeys[ep_rank].dst_buf);
-    }*/
-
     hc->rail = lsync->rail;
     hc->dpu_per_node_cnt = lsync->dpu_per_node_cnt;
     assert(hc->dpu_per_node_cnt > 0 && hc->rail >= 0 && hc->rail < hc->dpu_per_node_cnt);
 }
 
-static void dpu_import_dc_rkeys(thread_ctx_t *ctx, dpu_hc_t *_hc, dpu_hc_t *dc, dpu_put_sync_t *lsync)
+static void dpu_import_dc_rkeys(thread_ctx_t *ctx, dpu_hc_t *hc, dpu_hc_t *dc, dpu_put_sync_t *lsync)
 {
     int i, ep_rank;
     ucs_status_t status;
@@ -378,7 +359,7 @@ static void dpu_import_dc_rkeys(thread_ctx_t *ctx, dpu_hc_t *_hc, dpu_hc_t *dc, 
     ucc_rank_t team_size = 0;
     UCC_CHECK(ucc_team_get_size(team, &team_size));
 
-    dc->world_lsyncs = _hc->world_lsyncs;
+    dc->world_lsyncs = hc->world_lsyncs;
     memset(dc->host_rkeys, 0, sizeof(host_rkey_t) * dc->world_size);
 
     for (i = 0; i < team_size; i++) {
@@ -579,7 +560,7 @@ void *dpu_comm_thread(void *arg)
     uint16_t        rail; 
     uint16_t        dpu_per_node_cnt;
 
-    dpu_put_sync_t  *lsync = &tmp_sync; //comm_thread_ctx->hc->mem_segs.sync.base;
+    dpu_put_sync_t  *lsync = &tmp_sync;
     ucc_status_t    status;
 
     dpu_thread_set_affinity(ctx);
@@ -626,8 +607,6 @@ void *dpu_comm_thread(void *arg)
 
                 /* World team free so Hang up */
                 /* Don't send a response back to Host */
-                ucp_rkey_destroy(hc->src_rkey);
-                ucp_rkey_destroy(hc->dst_rkey);
                 break;
 
             } else {
@@ -755,7 +734,7 @@ int main(int argc, char **argv)
     if (s) { listen_port = atoi(s); }
     hc.port = listen_port;
 
-    printf("DPU server: Running with %d OpenMP threads on port %d\n", num_threads, listen_port);
+    printf("DPU server: Running with %d worker threads on port %d\n", num_threads, listen_port);
     UCC_CHECK(dpu_ucc_init(argc, argv, &ucc_glob));
     UCC_CHECK(dpu_hc_init(&hc));
 

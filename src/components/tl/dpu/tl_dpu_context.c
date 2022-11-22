@@ -263,7 +263,7 @@ UCC_CLASS_INIT_FUNC(ucc_tl_dpu_context_t,
     ep_params.err_handler.cb    = err_cb;
 
     /* Start connecting to all the DPUs */
-    // for (rail = 0; rail < dpu_count; rail++) {
+    for (rail = 0; rail < dpu_count; rail++) {
         char *s = getenv("OMPI_COMM_WORLD_LOCAL_RANK");
         rail = s == NULL ? 0 : atoi(s);
         dpu = *(dpu_hnames + rail);
@@ -382,14 +382,10 @@ UCC_CLASS_INIT_FUNC(ucc_tl_dpu_context_t,
             goto err_cleanup_worker;
         }
 
-        // FIXME FIXME
-        rail = 0;
-        dpu_count = 1;
-
         self->dpu_ctx_list[rail].ucp_context                 = ucp_context;
         self->dpu_ctx_list[rail].ucp_worker                  = ucp_worker;
         self->dpu_ctx_list[rail].ucp_ep                      = ucp_ep;
-    // }
+    }
 
     ucc_status = ucc_mpool_init(&self->req_mp, 0,
             sizeof(ucc_tl_dpu_task_t), 0, UCC_CACHE_LINE_SIZE, 8, UINT_MAX,

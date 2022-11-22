@@ -185,9 +185,9 @@ UCC_CLASS_INIT_FUNC(ucc_tl_dpu_team_t, ucc_base_context_t *tl_context,
 
     for (int rail = 0; rail < self->dpu_per_node_cnt; rail++) {
         ucc_tl_dpu_sync_t *dpu_sync   = &self->dpu_sync_list[rail];
+        dpu_sync->status              = UCC_OPERATION_INITIALIZED;
         dpu_sync->coll_id_issued      = 0;
         dpu_sync->coll_id_completed   = 0;
-        dpu_sync->status              = UCC_OPERATION_INITIALIZED;
 
         /* Execute oob allgather on behalf of DPU */
         if (params->id == ctx->world_team_id) {
@@ -252,12 +252,12 @@ ucc_status_t ucc_tl_dpu_team_destroy(ucc_base_team_t *tl_team)
         hangup.create_new_team     = 0;
      
         tl_info(ctx->super.super.lib, 
-                "sending hangup/team_free to dpu dpu_sync, coll id = %u", 
-                hangup.coll_id);
+                "sending hangup/team_free to dpu team id %d, coll id %u", 
+                team_id, hangup.coll_id);
         hangup_req = ucp_tag_send_nbx(dpu_connect->ucp_ep,
                         &hangup, sizeof(hangup), req_tag, &req_param);
         ucc_tl_dpu_req_wait(dpu_connect->ucp_worker, hangup_req);
-        tl_info(ctx->super.super.lib, "sent hangup/team_free to dpu team");
+        tl_info(ctx->super.super.lib, "sent hangup/team_free to dpu team %d", team_id);
 
         ucs_status_ptr_t request = ucp_worker_flush_nbx(dpu_connect->ucp_worker, &req_param);
         ucc_tl_dpu_req_wait(dpu_connect->ucp_worker, request);
