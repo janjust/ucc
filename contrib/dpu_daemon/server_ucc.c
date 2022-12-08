@@ -7,7 +7,7 @@
 #include "host_channel.h"
 #include <assert.h>
 
-ucc_status_t ucc_team_get_size(ucc_team_h team, uint32_t *size)
+ucc_status_t ucc_team_get_size(ucc_team_h team, ucc_rank_t *size)
 {
     ucc_team_attr_t attr = {.mask = UCC_TEAM_ATTR_FIELD_SIZE};
     ucc_team_get_attr(team, &attr);
@@ -15,7 +15,7 @@ ucc_status_t ucc_team_get_size(ucc_team_h team, uint32_t *size)
     return UCC_OK;
 }
 
-ucc_status_t ucc_team_get_my_ep(ucc_team_h team, uint64_t *ep)
+ucc_status_t ucc_team_get_my_ep(ucc_team_h team, ucc_rank_t *ep)
 {
     ucc_team_attr_t attr = {.mask = UCC_TEAM_ATTR_FIELD_EP};
     ucc_team_get_attr(team, &attr);

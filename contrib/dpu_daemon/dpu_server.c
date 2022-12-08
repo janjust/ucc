@@ -161,11 +161,11 @@ static ucc_status_t dpu_coll_do_blocking_alltoall(thread_ctx_t *ctx, dpu_put_syn
     /* TODO: use all threads */
     if (ctx->idx) { return UCC_OK; }
     ucs_status_t status;
-    size_t team_rank, team_size;
+    ucc_rank_t team_rank, team_size;
     dpu_hc_t *hc = ctx->dc;
     ucc_team_h team = ctx->comm->team_pool[lsync->team_id];
-    UCC_CHECK(ucc_team_get_size(team, (uint32_t*)&team_size));
-    UCC_CHECK(ucc_team_get_my_ep(team, (uint64_t*)&team_rank));
+    UCC_CHECK(ucc_team_get_size(team, &team_size));
+    UCC_CHECK(ucc_team_get_my_ep(team, &team_rank));
 
     size_t count_total   = lsync->count_total;
     size_t my_count      = count_total / team_size;
@@ -230,8 +230,8 @@ static ucc_status_t dpu_coll_do_blocking_alltoallv(thread_ctx_t *ctx, dpu_put_sy
     dpu_hc_t *hc = ctx->dc;
     ucc_coll_args_t *args = &lsync->coll_args;
     ucc_team_h team = ctx->comm->team_pool[lsync->team_id];
-    UCC_CHECK(ucc_team_get_size(team, (uint32_t*)&team_size));
-    UCC_CHECK(ucc_team_get_my_ep(team, (uint64_t*)&team_rank));
+    UCC_CHECK(ucc_team_get_size(team, &team_size));
+    UCC_CHECK(ucc_team_get_my_ep(team, &team_rank));
 
     CTX_LOG("Doing alltoallv on team id %u team size %u\n", lsync->team_id, team_size);
 
@@ -416,7 +416,7 @@ void dpu_coll_world_barrier(dpu_ucc_comm_t *comm)
 static void dpu_coll_free_host_rkeys(thread_ctx_t *ctx, dpu_hc_t *hc, dpu_put_sync_t *lsync)
 {
     int i;
-    unsigned int team_size = 0;
+    ucc_rank_t team_size = 0;
     ucc_team_h team = ctx->comm->team_pool[lsync->team_id];
     UCC_CHECK(ucc_team_get_size(team, &team_size));
     CTX_LOG("Freeing src/dst rkeys for %u hosts\n", team_size);
@@ -555,8 +555,9 @@ void *dpu_comm_thread(void *arg)
     thread_ctx_t    *ctx = (thread_ctx_t *)arg;
     dpu_hc_t        *hc = ctx->hc;
     dpu_hc_t        *dc = ctx->dc;
-    uint32_t        coll_id, dpu_team_size;
-    size_t          dpu_team_rank;
+    uint32_t        coll_id;
+    ucc_rank_t      dpu_team_rank;
+    ucc_rank_t      dpu_team_size;
     ucc_coll_type_t coll_type; 
     size_t          count_total; 
     uint16_t        team_id; 
