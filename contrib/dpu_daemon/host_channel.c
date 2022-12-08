@@ -317,6 +317,7 @@ int dpu_hc_reset_pipeline(dpu_hc_t *hc)
     pipe->avail_buffs = pipe->num_buffers;
     pipe->my_count = pipe->my_offset = 0;
     pipe->get_idx = pipe->red_idx = 0;
+    pipe->done_get = pipe->done_red = pipe->done_put = 0;
     pipe->src_rank = pipe->dst_rank = hc->world_rank / hc->dpu_per_node_cnt;
     pipe->count_issued = pipe->count_received = 0;
     pipe->count_reduced = pipe->count_serviced = 0;
@@ -806,6 +807,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *dc,
 
         /* Issue RDMA Read */
         if ((pipe->count_received < pipe->my_count)
+            && (pipe->done_get < host_team_size)
             && (pipe->avail_buffs > 0)
             && (accbuf->state == FREE || accbuf->state == REDUCING))
         {
@@ -825,7 +827,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *dc,
                     ep_src_rank, get_offset, src_addr, dst_addr, count, data_size, host_team_size);
 
             assert(getbuf->state == FREE);
-            // ucp_worker_fence(dc->ucp_worker);
+            ucp_worker_fence(dc->ucp_worker);
             getbuf->state = RECVING;
             getbuf->count = count;
             getbuf->bytes = data_size;
@@ -843,7 +845,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *dc,
             pipe->done_get++;
             if (pipe->done_get == host_team_size) {
                 pipe->count_received += count;
-                pipe->done_get = 0;
+                //pipe->done_get = 0;
             }
         }
 
@@ -880,8 +882,8 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *dc,
 
                 if (pipe->done_red == host_team_size-1) {
                     accbuf->state = REDUCED;
-                    pipe->count_reduced += redbuf->count;
-                    pipe->done_red = 0;
+                    pipe->count_reduced += accbuf->count;
+                    //pipe->done_red = 0;
                 }
             }
         }
@@ -907,7 +909,7 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *dc,
                     CTX_LOG("Issue Put to %d offset %lu src %p dst %p count %lu bytes %lu host_team_size: %d\n",
                             dst_rank, put_offset, src_addr, dst_addr, count, data_size, host_team_size);
                 
-                    // ucp_worker_fence(dc->ucp_worker);
+                    ucp_worker_fence(dc->ucp_worker);
                     requests[i] =
                             ucp_put_nbx(dc->host_eps[ep_dst_rank], src_addr, data_size,
                             (uint64_t)dst_addr, dc->host_dst_rkeys[ep_dst_rank], &dc->req_param);
@@ -917,16 +919,24 @@ ucs_status_t dpu_hc_progress_allreduce(dpu_hc_t *dc,
                 /* Wait for all write completions */
                 for (int i=0; i<window; i++) {
                     _dpu_request_wait(dc->ucp_worker, requests[i]);
+                    requests[i] = NULL;
                     pipe->done_put++;
                     remaining--;
                 }
             }
-            // _dpu_flush_host_eps(dc);
+
+            assert(pipe->avail_buffs == pipe->num_buffers);
+            assert(pipe->done_get == host_team_size);
+            assert(pipe->done_red == host_team_size-1);
+            assert(pipe->done_put == host_team_size);
+
+            _dpu_flush_host_eps(dc);
             pipe->count_serviced += accbuf->count;
             accbuf->state = FREE;
             accbuf->count = 0;
             accbuf->bytes = 0;
             accbuf->ucp_req = NULL;
+            pipe->done_get = pipe->done_red = pipe->done_put = 0;
         }
 
         ucp_worker_progress(dc->ucp_worker);

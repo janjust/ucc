@@ -694,8 +694,10 @@ void *dpu_comm_thread(void *arg)
         }
 
         else if (coll_type == UCC_COLL_TYPE_ALLTOALLV) {
-            dpu_coll_collect_host_rkeys(ctx, dc, lsync);
-            
+            if (ctx->idx) { continue; }
+
+            dpu_coll_collect_host_rkeys(ctx, hc, lsync);
+            dpu_import_dc_rkeys(ctx, hc, dc, lsync);
             dpu_coll_do_blocking_alltoallv(ctx, lsync);
 
             CTX_LOG("Waiting for all ranks to complete coll id: %u, type: %d\n",
