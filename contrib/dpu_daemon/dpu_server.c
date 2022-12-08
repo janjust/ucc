@@ -158,9 +158,11 @@ static void dpu_thread_set_affinity(thread_ctx_t *ctx)
 
 static ucc_status_t dpu_coll_do_blocking_alltoall(thread_ctx_t *ctx, dpu_put_sync_t *lsync)
 {
+    /* TODO: use all threads */
+    if (ctx->idx) { return UCC_OK; }
     ucs_status_t status;
     size_t team_rank, team_size;
-    dpu_hc_t *hc = ctx->hc;
+    dpu_hc_t *hc = ctx->dc;
     ucc_team_h team = ctx->comm->team_pool[lsync->team_id];
     UCC_CHECK(ucc_team_get_size(team, (uint32_t*)&team_size));
     UCC_CHECK(ucc_team_get_my_ep(team, (uint64_t*)&team_rank));
@@ -221,9 +223,11 @@ static ucc_status_t dpu_coll_do_blocking_alltoall(thread_ctx_t *ctx, dpu_put_syn
 
 static ucc_status_t dpu_coll_do_blocking_alltoallv(thread_ctx_t *ctx, dpu_put_sync_t *lsync)
 {
+    /* TODO: use all threads */
+    if (ctx->idx) { return UCC_OK; }
     ucs_status_t status;
     ucc_rank_t team_rank, team_size;
-    dpu_hc_t *hc = ctx->hc;
+    dpu_hc_t *hc = ctx->dc;
     ucc_coll_args_t *args = &lsync->coll_args;
     ucc_team_h team = ctx->comm->team_pool[lsync->team_id];
     UCC_CHECK(ucc_team_get_size(team, (uint32_t*)&team_size));
@@ -669,8 +673,10 @@ void *dpu_comm_thread(void *arg)
         }
 
         else if (coll_type == UCC_COLL_TYPE_ALLTOALL) {
-            dpu_coll_collect_host_rkeys(ctx, dc, lsync);
-            
+            if (ctx->idx) { continue; }
+
+            dpu_coll_collect_host_rkeys(ctx, hc, lsync);
+            dpu_import_dc_rkeys(ctx, hc, dc, lsync);
             dpu_coll_do_blocking_alltoall(ctx, lsync);
 
             CTX_LOG("Waiting for all ranks to complete coll id: %u, type: %d\n",
