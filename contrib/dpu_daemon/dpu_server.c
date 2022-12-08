@@ -172,7 +172,8 @@ static ucc_status_t dpu_coll_do_blocking_alltoall(thread_ctx_t *ctx, dpu_put_syn
     ucc_datatype_t dtype = lsync->coll_args.src.info.datatype;
     size_t dt_size       = dpu_ucc_dt_size(dtype);
 
-    CTX_LOG("Doing alltoall on team id %u team size %lu count %lu\n", lsync->team_id, team_size, count_total);
+    CTX_LOG("Doing alltoall on team id %u rank %lu size %lu count %lu\n",
+            lsync->team_id, team_rank, team_size, count_total);
 
     for(int i = 0; i < team_size; i++) {
         int src_rank = (team_rank + i) % team_size;
@@ -205,7 +206,7 @@ static ucc_status_t dpu_coll_do_blocking_alltoall(thread_ctx_t *ctx, dpu_put_syn
                     dst_offset, my_count, bytes_step);
             ucp_worker_fence(hc->ucp_worker);
             ucp_req = ucp_put_nbx(
-                hc->localhost_ep, tmp_addr, bytes_step, (uint64_t)dst_addr,
+                hc->host_eps[team_rank], tmp_addr, bytes_step, (uint64_t)dst_addr,
                 hc->host_dst_rkeys[team_rank], &hc->req_param);
             status = _dpu_request_wait(hc->ucp_worker, ucp_req);
             if (status != UCS_OK) {
@@ -233,7 +234,8 @@ static ucc_status_t dpu_coll_do_blocking_alltoallv(thread_ctx_t *ctx, dpu_put_sy
     UCC_CHECK(ucc_team_get_size(team, &team_size));
     UCC_CHECK(ucc_team_get_my_ep(team, &team_rank));
 
-    CTX_LOG("Doing alltoallv on team id %u team size %u\n", lsync->team_id, team_size);
+    CTX_LOG("Doing alltoallv on team id %u rank %lu size %lu\n",
+            lsync->team_id, team_rank, team_size);
 
     for(int i = 0; i < team_size; i++) {
         int src_rank = (team_rank + i) % team_size;
@@ -288,7 +290,7 @@ static ucc_status_t dpu_coll_do_blocking_alltoallv(thread_ctx_t *ctx, dpu_put_sy
                     dst_offset, dst_count, bytes_step);
             ucp_worker_fence(hc->ucp_worker);
             ucp_req = ucp_put_nbx(
-                hc->localhost_ep, tmp_addr, bytes_step, (uint64_t)dst_addr,
+                hc->host_eps[team_rank], tmp_addr, bytes_step, (uint64_t)dst_addr,
                 hc->host_dst_rkeys[team_rank], &hc->req_param);
             status = _dpu_request_wait(hc->ucp_worker, ucp_req);
             if (status != UCS_OK) {

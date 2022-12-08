@@ -177,6 +177,7 @@ int dpu_ucc_free_team(dpu_ucc_global_t *g, dpu_ucc_comm_t *comm)
 }
 
 void dpu_ucc_finalize(dpu_ucc_global_t *g) {
+    //ucc_lib_config_release(g->lib_config);
     ucc_finalize(g->lib);
 }
 

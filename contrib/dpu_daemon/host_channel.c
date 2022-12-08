@@ -54,8 +54,8 @@ static int _dpu_host_to_ip(dpu_hc_t *hc)
     struct in_addr **addr_list;
     int i;
 
-    hc->hname = calloc(1, 100 * sizeof(char));
-    hc->ip = malloc(100 * sizeof(char));
+    hc->hname = calloc(256, sizeof(char));
+    hc->ip = calloc(256, sizeof(char));
 
     int ret = gethostname(hc->hname, 100);
     if (ret) {
@@ -456,6 +456,7 @@ static ucs_status_t _dpu_create_remote_host_eps(dpu_hc_t *hc, dpu_ucc_comm_t *co
         /* Connecting to existing workers,
            Reuse already collected EP addresses */
         assert(hc->remote_addrs != NULL);
+        hc->localhost_ep = NULL;
     }
 
     ep_params.field_mask    = UCP_EP_PARAM_FIELD_REMOTE_ADDRESS |
