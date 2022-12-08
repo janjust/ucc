@@ -1,32 +1,52 @@
 #!/bin/bash
 
-NPROCS=2
-PPN=1
-BSZ=$((1 * 1024 * 1024))
+BSZ=$((4))
 ESZ=$((128 * 1024 * 1024))
 MEMSZ=$((16 * 1024 * 1024 * 1024))
-hostfile="$PWD/hostfile.cpu"
+ITER=200
+WARM=20
 
-WORK_DIR="/global/scratch/users/dpu/deploy"
-MPI_DIR="$WORK_DIR/build-x86/ompi"
-OMB_DIR="$WORK_DIR/build-x86/omb"
-OMB_EXE="$OMB_DIR/libexec/osu-micro-benchmarks/mpi/collective/osu_allreduce"
-OMB_OPT="-i 100 -x 20 -m $BSZ:$ESZ -M $MEMSZ"
+HOSTS=${1}
+PPN=${2:-1}
+NPROCS=$(($HOSTS*$PPN))
 
-mcaopts="--mca pml ucx --mca btl '^openib,vader' "
+NBUF=4
+BUFSZ=$((128*1024))
+
+WORKSPACE="/global/scratch/users/sourav"
+hostfile="$WORKSPACE/build-x86/hostfile.cpu"
+
+UCX_DIR=$HPCX_UCX_DIR
+UCC_DIR="$WORKSPACE/build-x86/ucc"
+MPI_DIR=$HPCX_MPI_DIR
+OMB_DIR=$HPCX_OSU_DIR
+
+mcaopts+="--mca pml ucx --mca btl '^openib' "
 mcaopts+="--mca opal_common_ucx_opal_mem_hooks 1 "
 mcaopts+="--mca coll_ucc_enable 1 --mca coll_ucc_priority 100 --mca coll_ucc_verbose 0  "
-uccopts="-x UCC_TL_DPU_TUNE=0-64K:0 "
-uccopts+="-x UCC_LOG_LEVEL=warn -x UCC_CL_BASIC_TLS=ucp,dpu "
-uccopts+="-x UCC_TL_DPU_PIPELINE_BLOCK_SIZE=$((4*256*1024)) "
+
+uccopts+="-x UCC_TL_DPU_TUNE=0-64:0 "
+uccopts+="-x UCC_LOG_LEVEL=warn "
+uccopts+="-x UCC_CL_BASIC_TLS=ucp,dpu "
+uccopts+="-x UCC_TL_DPU_PIPELINE_BLOCK_SIZE=$BUFSZ "
+uccopts+="-x UCC_TL_DPU_PIPELINE_BUFFERS=$NBUF "
 uccopts+="-x UCC_TL_DPU_HOST_DPU_LIST=host_to_dpu.list "
-uccopts+="-x UCX_NET_DEVICES=mlx5_0:1 -x UCX_TLS=rc_x "
+uccopts+="-x UCX_NET_DEVICES=mlx5_4:1 "
+uccopts+="-x UCX_TLS=self,rc_x "
+uccopts+="-x UCX_MAX_RNDV_RAILS=1 "
+
+rtopts+="-x LD_LIBRARY_PATH=$UCC_DIR/lib:$LD_LIBRARY_PATH  "
+
+
+omb_exe="$OMB_DIR/osu_allreduce"
+omb_opts+="-i $ITER -x $WARM -M $MEMSZ -m $BSZ:$ESZ -f "
 
 cmd="${MPI_DIR}/bin/mpirun -np ${NPROCS} \
-    --map-by ppr:$PPN:node \
-    --hostfile ${hostfile} \
-    ${mcaopts} ${uccopts} \
-    ${OMB_EXE} ${OMB_OPT}"
+    --bind-to none \
+    --map-by ppr:$PPN:node --hostfile ${hostfile} \
+    ${mcaopts} ${uccopts} ${ncclopts} ${rtopts} \
+    ${omb_exe} ${omb_opts} \
+    "
 
 echo $cmd
 eval "$cmd"
