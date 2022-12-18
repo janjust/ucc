@@ -6,13 +6,13 @@
 
 #include "../tl_shm_coll_perf_params.h"
 
-TL_SHM_PERF_KEY_DECLARE(amd_rome_2_64, AMD, ROME,
-                        BCAST_WW, 0, 4, 2, BCAST_WR, 0, 16, 2,
+TL_SHM_PERF_KEY_DECLARE(amd_milan_2_64, AMD, MILAN,
+                        BCAST_RW, 0, 4, 2, BCAST_WR, 0, 8, 8,
                         0, 2, 2, 0, 4, 2,
                         SEG_LAYOUT_SOCKET, 2, 8192, 64, 64);
 
-static void ucc_tl_shm_amd_rome_8_16_bcast(ucc_tl_shm_perf_params_t *params,
-                                           ucc_tl_shm_task_t        *task)
+static void ucc_tl_shm_amd_milan_8_16_bcast(ucc_tl_shm_perf_params_t *params,
+                                            ucc_tl_shm_task_t        *task)
 {
     ucc_tl_shm_team_t *team      = TASK_TEAM(task);
     size_t             data_size =
@@ -27,15 +27,15 @@ static void ucc_tl_shm_amd_rome_8_16_bcast(ucc_tl_shm_perf_params_t *params,
         p->super.top_radix      = 4;
     } else {
         p->progress_alg         = BCAST_WR;
-        p->super.base_radix     = 16;
-        p->super.top_radix      = 2;
+        p->super.base_radix     = 4;
+        p->super.top_radix      = 4;
     }
 }
 
-TL_SHM_PERF_KEY_DECLARE_REDUCE(amd_rome_8_16, 0, 16, 8, 0, 4, 4);
+TL_SHM_PERF_KEY_DECLARE_REDUCE(amd_milan_8_16, 0, 16, 8, 0, 4, 4);
 
-TL_SHM_PERF_KEY_DECLARE_BASE(amd_rome_8_16, AMD, ROME,
-                             ucc_tl_shm_amd_rome_8_16_bcast,
-                             ucc_tl_shm_amd_rome_8_16_reduce,
+TL_SHM_PERF_KEY_DECLARE_BASE(amd_milan_8_16, AMD, MILAN,
+                             ucc_tl_shm_amd_milan_8_16_bcast,
+                             ucc_tl_shm_amd_milan_8_16_reduce,
                              SEG_LAYOUT_SOCKET, 8, 8192,
                              16, 16, 16, 16, 16, 16, 16, 16);

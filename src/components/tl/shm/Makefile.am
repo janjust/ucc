@@ -31,7 +31,8 @@ perf    =                          \
 	perf/tl_shm_coll_perf_params.c \
 	perf/intel/broadwell.c         \
 	perf/intel/skylake.c           \
-	perf/amd/rome.c
+	perf/amd/rome.c                \
+	perf/amd/milan.c
 
 sources =                          \
 	tl_shm.h                       \
