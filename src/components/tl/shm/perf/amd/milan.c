@@ -8,7 +8,7 @@
 
 TL_SHM_PERF_KEY_DECLARE(amd_milan_2_64, AMD, MILAN,
                         BCAST_RW, 0, 4, 2, BCAST_WR, 0, 8, 8,
-                        0, 2, 2, 0, 4, 2,
+                        0, 8, 4, 0, 8, 2,
                         SEG_LAYOUT_SOCKET, 2, 8192, 64, 64);
 
 static void ucc_tl_shm_amd_milan_8_16_bcast(ucc_tl_shm_perf_params_t *params,
@@ -32,7 +32,7 @@ static void ucc_tl_shm_amd_milan_8_16_bcast(ucc_tl_shm_perf_params_t *params,
     }
 }
 
-TL_SHM_PERF_KEY_DECLARE_REDUCE(amd_milan_8_16, 0, 16, 8, 0, 4, 4);
+TL_SHM_PERF_KEY_DECLARE_REDUCE(amd_milan_8_16, 0, 4, 8, 0, 8, 4);
 
 TL_SHM_PERF_KEY_DECLARE_BASE(amd_milan_8_16, AMD, MILAN,
                              ucc_tl_shm_amd_milan_8_16_bcast,
