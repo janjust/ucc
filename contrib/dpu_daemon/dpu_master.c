@@ -96,7 +96,7 @@ static int _dpu_master_listen(dpu_mc_t *mc)
         return UCC_ERR_NO_MESSAGE;
     }
 
-    DPU_LOG("DPU Master %d listening on %s:%d\n", getpid(), mc->hname, mc->master_port);
+    printf("DPU Master %d listening on %s:%d\n", getpid(), mc->hname, mc->master_port);
     /* creates an UN-named socket inside the kernel and returns
      * an integer known as socket descriptor
      * This function takes domain/family as its first argument.

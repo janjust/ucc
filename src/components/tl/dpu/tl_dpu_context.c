@@ -389,7 +389,7 @@ UCC_CLASS_INIT_FUNC(ucc_tl_dpu_context_t,
 
     ucc_status = ucc_mpool_init(&self->req_mp, 0,
             sizeof(ucc_tl_dpu_task_t), 0, UCC_CACHE_LINE_SIZE, 8, UINT_MAX,
-            &ucc_tl_dpu_req_mpool_ops, worker_params.thread_mode,
+            &ucc_tl_dpu_req_mpool_ops, UCC_THREAD_MULTIPLE,
             "tl_dpu_req_mp");
     if (UCC_OK != ucc_status) {
         tl_error(self->super.super.lib, "failed to initialize tl_dpu_req mpool");

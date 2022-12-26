@@ -55,7 +55,8 @@ ucc_status_t ucc_tl_dpu_req_wait(ucp_worker_h ucp_worker, ucs_status_ptr_t reque
     else if (UCS_PTR_IS_ERR(request)) {
         status = ucp_request_check_status(request);
         fprintf (stderr, "unable to complete UCX request (%s)\n", ucs_status_string(status));
-        return UCS_PTR_STATUS(request);
+        status = UCS_PTR_STATUS(request);
+        return ucs_status_to_ucc_status(status);
     }
     else {
         do {
@@ -125,7 +126,7 @@ ucc_status_t ucc_tl_dpu_deregister_buf(
     }
     ucp_rkey_buffer_release(rkey->rkey_buf);
 out:
-    return status;
+    return ucs_status_to_ucc_status(status);
 }
 
 static ucc_status_t ucc_tl_dpu_init_rkeys(ucc_tl_dpu_task_t *task)
