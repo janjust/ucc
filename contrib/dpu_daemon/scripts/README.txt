@@ -22,8 +22,8 @@
 2. ssh to Host and DPU on terminal 1 and 2 respectively
 3. Launch run_dpu.sh script on DPU terminal
 4. Wait for the following message to appear:
-[1,0]<stdout>:DPU daemon: Running with 4 compute threads
-[1,1]<stdout>:DPU daemon: Running with 4 compute threads
+[1,0]<stdout>:DPU server: Running with 8 worker threads on port 10001
+[1,1]<stdout>:DPU server: Running with 8 worker threads on port 10001
 5. Launch run_omb.sh script on Host terminal
 
 Example:
@@ -47,3 +47,4 @@ Example:
    it will launch MPI without DPU enabled and nothing will be offloaded.
 4. Building OpenMPI takes a long time, especially on BF2.
    Avoid unnecessary rebuilds by editing the build scripts appropriately.
+5. Building UCX, OpenMPI, and OSU Benchmarks can be avoided by using HPCX.

@@ -3,7 +3,10 @@
 # Default 2 nodes
 NP=${1:-2}
 
-WORKSPACE="/global/scratch/users/sourav"
+# Default 8 worker threads
+NT=${2:-8}
+
+WORKSPACE="/swgwork/souravc/workspace"
 hostfile="$PWD/hostfile.dpu"
 MPI_DIR=$HPCX_MPI_DIR
 UCC_DIR="$WORKSPACE/build-arm/ucc"
@@ -22,10 +25,10 @@ cmd="$MPI_DIR/bin/mpirun --np ${NP} \
      -x UCX_MAX_RNDV_RAILS=1 \
      -x UCC_CL_BASIC_TLS=ucp \
      -x UCC_TL_DPU_PRINT_SUMMARY=1 \
+     -x UCC_TL_DPU_NUM_THREADS=${NT} \
      -x UCC_INTERNAL_OOB=1 \
-     -x UCC_TL_DPU_NUM_THREADS=8 \
-     -x UCC_TL_DPU_BCAST_WINDOW=8 \
      ${DPU_BIN} "
 
 echo $cmd
 eval "$cmd"
+
