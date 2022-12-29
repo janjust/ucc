@@ -1,8 +1,9 @@
 /**
- * Copyright (C) Mellanox Technologies Ltd. 2022.  ALL RIGHTS RESERVED.
+ * Copyright (c) 2022, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * See file LICENSE for terms.
  */
+
 #include "config.h"
 #include "../tl_shm.h"
 #include "fanin.h"
