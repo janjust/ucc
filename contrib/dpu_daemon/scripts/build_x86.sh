@@ -15,7 +15,7 @@ SCRIPT_DIR=$PWD
 UCX_SRC="$WORK_DIR/ucx"
 UCX_DIR="$BUILD_DIR/ucx"
 UCX_URL='https://github.com/openucx/ucx.git'
-UCX_BRANCH='master'
+UCX_BRANCH='v1.13.0'
 
 UCC_SRC="$WORK_DIR/ucc"
 UCC_DIR="$BUILD_DIR/ucc"
@@ -34,6 +34,9 @@ OMB_BRANCH='master'
 
 echo "#### WORK DIR  : $WORK_DIR  ####"
 echo "#### BUILD DIR : $BUILD_DIR ####"
+
+mkdir -p $WORK_DIR
+mkdir -p $BUILD_DIR
 cd $WORK_DIR
 
 if [ $download -eq 1 ]; then
