@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2022, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2022-2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 
 bcast   =                          \
@@ -21,7 +21,7 @@ fanout  =                          \
 barrier =                          \
 	barrier/barrier.h              \
 	barrier/barrier.c
-	
+
 allreduce =                        \
 	allreduce/allreduce.h          \
 	allreduce/allreduce.c
@@ -32,7 +32,8 @@ perf    =                          \
 	perf/intel/broadwell.c         \
 	perf/intel/skylake.c           \
 	perf/amd/rome.c                \
-	perf/amd/milan.c
+	perf/amd/milan.c               \
+	perf/amd/genoa.c
 
 sources =                          \
 	tl_shm.h                       \

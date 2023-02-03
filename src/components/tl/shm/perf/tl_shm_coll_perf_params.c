@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2022, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2022-2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * See file LICENSE for terms.
  */
@@ -18,5 +18,7 @@ ucc_tl_shm_perf_key_t* ucc_tl_shm_perf_params[UCC_TL_SHM_N_PERF_PARAMS] =
     &amd_rome_8_16,
     &amd_milan_2_64,
     &amd_milan_8_16,
+    &amd_genoa_2_96,
+    &amd_genoa_8_24,
     NULL
 };
