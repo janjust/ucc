@@ -40,5 +40,21 @@ ucc_status_t ucc_tl_shm_get_lib_attr(const ucc_base_lib_t *lib, /* NOLINT */
         UCC_THREAD_MULTIPLE; //TODO: run tm tests to make sure we support
     attr->super.attr.coll_types = UCC_TL_SHM_SUPPORTED_COLLS;
     attr->super.flags           = 0;
+    if (base_attr->mask & UCC_BASE_LIB_ATTR_FIELD_MIN_TEAM_SIZE) {
+        attr->super.min_team_size = lib->min_team_size;
+    }
+
+    if (base_attr->mask & UCC_BASE_LIB_ATTR_FIELD_MAX_TEAM_SIZE) {
+        attr->super.max_team_size = UCC_RANK_MAX;
+    }
+
+    return UCC_OK;
+}
+
+ucc_status_t ucc_tl_shm_get_lib_properties(ucc_base_lib_properties_t *prop)
+{
+    prop->default_team_size = 2;
+    prop->min_team_size     = 2;
+    prop->max_team_size     = UCC_RANK_MAX;
     return UCC_OK;
 }
