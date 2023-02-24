@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2022, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2022-2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * See file LICENSE for terms.
  */
@@ -17,6 +17,8 @@ extern ucc_tl_shm_perf_key_t amd_rome_2_64;
 extern ucc_tl_shm_perf_key_t amd_rome_8_16;
 extern ucc_tl_shm_perf_key_t amd_milan_2_64;
 extern ucc_tl_shm_perf_key_t amd_milan_8_16;
+extern ucc_tl_shm_perf_key_t amd_genoa_2_96;
+extern ucc_tl_shm_perf_key_t amd_genoa_8_24;
 
 static inline void
 ucc_tl_shm_perf_params_generic_bcast(ucc_tl_shm_perf_params_t *params,

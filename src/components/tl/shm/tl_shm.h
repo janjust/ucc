@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2022, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2022-2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * See file LICENSE for terms.
  */
@@ -177,7 +177,7 @@ typedef void (*perf_params_fn_t)(ucc_tl_shm_perf_params_t *params,
                                  ucc_tl_shm_task_t        *task);
 
 #define UCC_TL_SHM_MAX_BASE_GROUPS 32
-#define UCC_TL_SHM_N_PERF_PARAMS   11
+#define UCC_TL_SHM_N_PERF_PARAMS   13
 
 typedef struct ucc_tl_shm_perf_key {
     ucc_cpu_vendor_t        cpu_vendor;
