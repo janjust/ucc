@@ -36,7 +36,7 @@ UCC_CLASS_INIT_FUNC(ucc_tl_shm_context_t,
 
 UCC_CLASS_CLEANUP_FUNC(ucc_tl_shm_context_t)
 {
-    tl_info(self->super.super.lib, "finalizing tl context: %p", self);
+    tl_debug(self->super.super.lib, "finalizing tl context: %p", self);
     ucc_mpool_cleanup(&self->req_mp, 1);
 }
 
