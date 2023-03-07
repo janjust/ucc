@@ -531,7 +531,7 @@ err_topo_init:
 
 UCC_CLASS_CLEANUP_FUNC(ucc_tl_shm_team_t)
 {
-    tl_info(self->super.super.context->lib, "finalizing tl team: %p", self);
+    tl_debug(self->super.super.context->lib, "finalizing tl team: %p", self);
 }
 
 UCC_CLASS_DEFINE_DELETE_FUNC(ucc_tl_shm_team_t, ucc_base_team_t);
