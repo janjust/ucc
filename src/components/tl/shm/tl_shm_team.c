@@ -252,7 +252,7 @@ static ucc_status_t ucc_tl_shm_seg_alloc(ucc_tl_shm_team_t *team)
         shmsize += sizeof(uint32_t);
         shmid = shmget(IPC_PRIVATE, shmsize, SHM_MODE);
         if (shmid < 0) {
-            tl_error(team->super.super.context->lib,
+            tl_debug(team->super.super.context->lib,
                      "Root: shmget failed, shmid=%d, shmsize=%ld, errno: %s",
                      shmid, shmsize, strerror(errno));
             goto allgather;
@@ -261,7 +261,7 @@ static ucc_status_t ucc_tl_shm_seg_alloc(ucc_tl_shm_team_t *team)
         if (team->shm_buffers[team->my_group_id] == (void *)-1) {
             shmid                                = -2;
             team->shm_buffers[team->my_group_id] = NULL;
-            tl_error(team->super.super.context->lib, "shmat failed, errno: %s",
+            tl_debug(team->super.super.context->lib, "shmat failed, errno: %s",
                      strerror(errno));
             goto allgather;
         }
@@ -601,15 +601,14 @@ ucc_status_t ucc_tl_shm_team_create_test(ucc_base_team_t *tl_team)
         for (i = 0; i < team->n_base_groups; i++) {
             group_leader = ucc_ep_map_eval(team->base_groups[i].map, 0);
             shmid        = team->allgather_dst[group_leader];
-            ucc_assert(group_leader != 0 || shmid != -1);
+
+            if (shmid == -2 || (group_leader == 0 && shmid == -1)) {
+                return UCC_ERR_NO_RESOURCE;
+            }
 
             if (shmid == -1) {
                 /* no shm seg from that group leader */
                 continue;
-            }
-
-            if (shmid == -2) {
-                return UCC_ERR_NO_RESOURCE;
             }
 
             if (UCC_TL_TEAM_RANK(team) != group_leader) {
