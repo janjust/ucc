@@ -151,9 +151,9 @@ ucc_status_t ucc_tl_shm_allreduce_init(ucc_base_coll_args_t *coll_args,
                                        ucc_coll_task_t **    task_h)
 {
     ucc_tl_shm_team_t     *team = ucc_derived_of(tl_team, ucc_tl_shm_team_t);
+    ucc_tl_shm_pp_bcast_t  params_bcast  = {0};
+    ucc_tl_shm_pp_reduce_t params_reduce = {0};
     ucc_tl_shm_task_t     *task;
-    ucc_tl_shm_pp_bcast_t  params_bcast;
-    ucc_tl_shm_pp_reduce_t params_reduce;
     ucc_status_t           status;
 
     if (coll_args->args.op == UCC_OP_AVG) {
@@ -170,6 +170,7 @@ ucc_status_t ucc_tl_shm_allreduce_init(ucc_base_coll_args_t *coll_args,
     team->perf_params_bcast(&params_bcast.super, task);
     task->progress_alg = params_bcast.progress_alg;
 
+    // coverity[divide_by_zero:FALSE]
     status = ucc_tl_shm_tree_init(
         team, TASK_ARGS(task).root, params_bcast.super.base_radix,
         params_bcast.super.top_radix,
@@ -183,6 +184,7 @@ ucc_status_t ucc_tl_shm_allreduce_init(ucc_base_coll_args_t *coll_args,
 
     team->perf_params_reduce(&params_reduce.super, task);
 
+    // coverity[divide_by_zero:FALSE]
     status = ucc_tl_shm_tree_init(
         team, TASK_ARGS(task).root, params_reduce.super.base_radix,
         params_reduce.super.top_radix,
