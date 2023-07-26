@@ -267,7 +267,8 @@ ucc_status_t ucc_tl_shm_bcast_init(ucc_base_coll_args_t *coll_args,
                                    ucc_coll_task_t **    task_h)
 {
     ucc_tl_shm_team_t    *team   = ucc_derived_of(tl_team, ucc_tl_shm_team_t);
-    ucc_tl_shm_pp_bcast_t params = {0};
+    ucc_tl_shm_pp_bcast_t params = {.super        = {0},
+                                    .progress_alg = 0};
     ucc_tl_shm_task_t    *task;
     ucc_status_t          status;
 
