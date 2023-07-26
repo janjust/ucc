@@ -151,8 +151,9 @@ ucc_status_t ucc_tl_shm_allreduce_init(ucc_base_coll_args_t *coll_args,
                                        ucc_coll_task_t **    task_h)
 {
     ucc_tl_shm_team_t     *team = ucc_derived_of(tl_team, ucc_tl_shm_team_t);
-    ucc_tl_shm_pp_bcast_t  params_bcast  = {0};
-    ucc_tl_shm_pp_reduce_t params_reduce = {0};
+    ucc_tl_shm_pp_bcast_t  params_bcast  = {.super        = {0},
+                                            .progress_alg = 0};
+    ucc_tl_shm_pp_reduce_t params_reduce = {.super = {0}};
     ucc_tl_shm_task_t     *task;
     ucc_status_t           status;
 
