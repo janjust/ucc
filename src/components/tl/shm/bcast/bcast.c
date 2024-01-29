@@ -255,7 +255,6 @@ static ucc_status_t ucc_tl_shm_bcast_start(ucc_coll_task_t *coll_task)
     ucc_tl_shm_task_t *task = ucc_derived_of(coll_task, ucc_tl_shm_task_t);
     ucc_tl_shm_team_t *team = TASK_TEAM(task);
 
-    ucc_tl_shm_task_reset(task, team, UCC_RANK_INVALID);
     task->stage = BCAST_STAGE_START;
     UCC_TL_SHM_PROFILE_REQUEST_EVENT(coll_task, "shm_bcast_start", 0);
     task->super.status = UCC_INPROGRESS;
@@ -276,7 +275,12 @@ ucc_status_t ucc_tl_shm_bcast_init(ucc_base_coll_args_t *coll_args,
         return UCC_ERR_NOT_SUPPORTED;
     }
 
+    if (UCC_IS_PERSISTENT(coll_args->args)) {
+        return UCC_ERR_NOT_SUPPORTED;
+    }
+
     task = ucc_tl_shm_get_task(coll_args, team);
+    ucc_tl_shm_task_reset(task, team, UCC_RANK_INVALID);
 
     if (ucc_unlikely(!task)) {
         return UCC_ERR_NO_MEMORY;

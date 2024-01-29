@@ -133,7 +133,6 @@ static ucc_status_t ucc_tl_shm_allreduce_start(ucc_coll_task_t *coll_task)
     ucc_tl_shm_team_t *team = TASK_TEAM(task);
     ucc_status_t       status;
 
-    ucc_tl_shm_task_reset(task, team, UCC_RANK_INVALID);
     task->stage = ALLREDUCE_STAGE_START;
     task->tree  = task->allreduce.reduce_tree;
     UCC_TL_SHM_PROFILE_REQUEST_EVENT(coll_task, "shm_allreduce_start", 0);
@@ -161,12 +160,16 @@ ucc_status_t ucc_tl_shm_allreduce_init(ucc_base_coll_args_t *coll_args,
         return UCC_ERR_NOT_SUPPORTED;
     }
 
-    task = ucc_tl_shm_get_task(coll_args, team);
+    if (UCC_IS_PERSISTENT(coll_args->args)) {
+        return UCC_ERR_NOT_SUPPORTED;
+    }
 
+    task = ucc_tl_shm_get_task(coll_args, team);
     if (ucc_unlikely(!task)) {
         return UCC_ERR_NO_MEMORY;
     }
 
+    ucc_tl_shm_task_reset(task, team, UCC_RANK_INVALID);
     TASK_ARGS(task).root = 0;
     team->perf_params_bcast(&params_bcast.super, task);
     task->progress_alg = params_bcast.progress_alg;
