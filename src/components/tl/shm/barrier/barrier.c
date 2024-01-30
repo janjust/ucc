@@ -82,7 +82,6 @@ static ucc_status_t ucc_tl_shm_barrier_start(ucc_coll_task_t *coll_task)
     ucc_tl_shm_task_t *task = ucc_derived_of(coll_task, ucc_tl_shm_task_t);
     ucc_tl_shm_team_t *team = TASK_TEAM(task);
 
-    ucc_tl_shm_task_reset(task, team, UCC_RANK_INVALID);
     task->stage = BARRIER_STAGE_START;
     UCC_TL_SHM_PROFILE_REQUEST_EVENT(coll_task, "shm_barrier_start", 0);
     task->super.status = UCC_INPROGRESS;
@@ -101,6 +100,9 @@ ucc_status_t ucc_tl_shm_barrier_init(ucc_base_coll_args_t *coll_args,
     ucc_tl_shm_task_t *task;
     ucc_status_t       status;
 
+    if (UCC_IS_PERSISTENT(coll_args->args)) {
+        return UCC_ERR_NOT_SUPPORTED;
+    }
 
     task = ucc_tl_shm_get_task(coll_args, team);
 
@@ -108,6 +110,7 @@ ucc_status_t ucc_tl_shm_barrier_init(ucc_base_coll_args_t *coll_args,
         return UCC_ERR_NO_MEMORY;
     }
 
+    ucc_tl_shm_task_reset(task, team, UCC_RANK_INVALID);
     status = ucc_tl_shm_tree_init(team, root, base_radix, top_radix,
                                   UCC_COLL_TYPE_REDUCE, bto, &task->tree);
 

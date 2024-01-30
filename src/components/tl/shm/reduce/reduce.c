@@ -195,7 +195,6 @@ static ucc_status_t ucc_tl_shm_reduce_start(ucc_coll_task_t *coll_task)
     ucc_status_t       status;
 
     task->stage = REDUCE_STAGE_START;
-    ucc_tl_shm_task_reset(task, team, TASK_ARGS(task).root);
     UCC_TL_SHM_PROFILE_REQUEST_EVENT(coll_task, "shm_reduce_start", 0);
 
     status = ucc_coll_task_get_executor(coll_task, &task->executor);
@@ -220,7 +219,12 @@ ucc_status_t ucc_tl_shm_reduce_init(ucc_base_coll_args_t *coll_args,
         return UCC_ERR_NOT_SUPPORTED;
     }
 
+    if (UCC_IS_PERSISTENT(coll_args->args)) {
+        return UCC_ERR_NOT_SUPPORTED;
+    }
+
     task = ucc_tl_shm_get_task(coll_args, team);
+    ucc_tl_shm_task_reset(task, team, TASK_ARGS(task).root);
 
     if (ucc_unlikely(!task)) {
         return UCC_ERR_NO_MEMORY;
