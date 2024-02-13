@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2022, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2022-2024, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  *
  * See file LICENSE for terms.
  */
@@ -10,6 +10,33 @@ TL_SHM_PERF_KEY_DECLARE(amd_milan_2_64, AMD, MILAN,
                         BCAST_RW, 0, 4, 2, BCAST_WR, 0, 8, 8,
                         0, 8, 4, 0, 8, 2,
                         SEG_LAYOUT_SOCKET, 2, 8192, 64, 64);
+
+static void ucc_tl_shm_amd_milan_16_32_bcast(ucc_tl_shm_perf_params_t *params,
+                                            ucc_tl_shm_task_t        *task)
+{
+    ucc_tl_shm_team_t *team      = TASK_TEAM(task);
+    size_t             data_size =
+        ucc_coll_args_msgsize(&task->super.bargs.args, UCC_TL_TEAM_RANK(team),
+                              UCC_TL_TEAM_SIZE(team));
+    ucc_tl_shm_pp_bcast_t *p = ucc_derived_of(params, ucc_tl_shm_pp_bcast_t);
+
+    if (data_size <= team->max_inline) {
+        p->super.base_tree_only = 1;
+        p->progress_alg         = BCAST_WW;
+        p->super.base_radix     = 4;
+        p->super.top_radix      = 4;
+    } else {
+        p->super.base_tree_only = 0;
+        p->progress_alg         = BCAST_WR;
+        p->super.base_radix     = 8;
+        p->super.top_radix      = 2;
+    }
+}
+
+TL_SHM_PERF_KEY_DECLARE_BASE(amd_milan_16_32, AMD, MILAN,
+                             ucc_tl_shm_amd_milan_16_32_bcast,
+                             ucc_tl_shm_perf_params_generic_reduce, //TODO: add reduce params
+                             SEG_LAYOUT_SOCKET, 2, 8192, 32, 32);
 
 static void ucc_tl_shm_amd_milan_8_16_bcast(ucc_tl_shm_perf_params_t *params,
                                             ucc_tl_shm_task_t        *task)
