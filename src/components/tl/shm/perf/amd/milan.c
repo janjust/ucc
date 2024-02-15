@@ -33,9 +33,11 @@ static void ucc_tl_shm_amd_milan_16_32_bcast(ucc_tl_shm_perf_params_t *params,
     }
 }
 
+TL_SHM_PERF_KEY_DECLARE_REDUCE(amd_milan_16_32, 0, 8, 8, 0, 2, 4);
+
 TL_SHM_PERF_KEY_DECLARE_BASE(amd_milan_16_32, AMD, MILAN,
                              ucc_tl_shm_amd_milan_16_32_bcast,
-                             ucc_tl_shm_perf_params_generic_reduce, //TODO: add reduce params
+                             ucc_tl_shm_amd_milan_16_32_reduce,
                              SEG_LAYOUT_SOCKET, 2, 8192, 32, 32);
 
 static void ucc_tl_shm_amd_milan_8_16_bcast(ucc_tl_shm_perf_params_t *params,
