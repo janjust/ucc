@@ -21,5 +21,6 @@ ucc_tl_shm_perf_key_t* ucc_tl_shm_perf_params[UCC_TL_SHM_N_PERF_PARAMS] =
     &amd_milan_16_32,
     &amd_genoa_2_96,
     &amd_genoa_8_24,
+    &nvidia_grace_1_72,
     NULL
 };
