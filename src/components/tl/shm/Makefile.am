@@ -33,7 +33,8 @@ perf    =                          \
 	perf/intel/skylake.c           \
 	perf/amd/rome.c                \
 	perf/amd/milan.c               \
-	perf/amd/genoa.c
+	perf/amd/genoa.c               \
+	perf/nvidia/grace.c
 
 sources =                          \
 	tl_shm.h                       \

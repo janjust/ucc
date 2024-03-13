@@ -20,6 +20,7 @@ extern ucc_tl_shm_perf_key_t amd_milan_8_16;
 extern ucc_tl_shm_perf_key_t amd_milan_16_32;
 extern ucc_tl_shm_perf_key_t amd_genoa_2_96;
 extern ucc_tl_shm_perf_key_t amd_genoa_8_24;
+extern ucc_tl_shm_perf_key_t nvidia_grace_1_72;
 
 static inline void
 ucc_tl_shm_perf_params_generic_bcast(ucc_tl_shm_perf_params_t *params,
