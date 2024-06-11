@@ -16,10 +16,12 @@ touch config/m4/tl_coll_plugins_list.m4
 touch config/m4/tls_list.m4
 
 # Detect and generate TLs makefiles
-for t in $(ls -d src/components/tl/*/); do
-    echo "m4_include([$t/configure.m4])" >> config/m4/tls_list.m4
-    plugin=$(basename $t)
-    echo "SUBDIRS += components/tl/$plugin" >> src/components/tl/makefile.am
+for t in $(ls -d src/components/tl/*); do
+    if [ -f "$t/configure.m4" ]; then
+        echo "m4_include([$t/configure.m4])" >> config/m4/tls_list.m4
+        plugin=$(basename $t)
+        echo "SUBDIRS += components/tl/$plugin" >> src/components/tl/makefile.am
+    fi
 done
 
 # Detect and generate TL coll plugins makefiles
