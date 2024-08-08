@@ -88,7 +88,6 @@ ucc_tl_shm_reduce_read(ucc_tl_shm_team_t *team, ucc_tl_shm_seg_t *seg,
         ready      = 0;
         for (j = 0; j < n_polls; j++) {
             if (child_ctrl->pi2 == seq_num) {
-                ucc_memory_cpu_fence();
                 ready = 1;
                 num_ready++;
                 srcs[num_ready] = is_inline ? child_ctrl->data
@@ -100,6 +99,7 @@ ucc_tl_shm_reduce_read(ucc_tl_shm_team_t *team, ucc_tl_shm_seg_t *seg,
             return UCC_INPROGRESS;
         }
         if (num_ready == batch) {
+            ucc_memory_cpu_fence();
             dst = ((root == team_rank)
                    ? args->dst.info.buffer : (is_inline ? my_ctrl->data
                       : ucc_tl_shm_get_data(seg, team, team_rank)));
