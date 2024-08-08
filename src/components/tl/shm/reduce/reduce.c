@@ -74,8 +74,8 @@ ucc_tl_shm_reduce_read(ucc_tl_shm_team_t *team, ucc_tl_shm_seg_t *seg,
             dst = is_inline ? my_ctrl->data
                             : ucc_tl_shm_get_data(seg, team, team_rank);
             memcpy(dst, args->src.info.buffer, count * ucc_dt_size(dt));
+            ucc_memory_cpu_store_fence();
         }
-        ucc_memory_cpu_store_fence();
         my_ctrl->pi2 = seq_num; //signals to parent
         return UCC_OK;
     }
@@ -99,6 +99,7 @@ ucc_tl_shm_reduce_read(ucc_tl_shm_team_t *team, ucc_tl_shm_seg_t *seg,
             return UCC_INPROGRESS;
         }
         if (num_ready == batch) {
+            ucc_memory_cpu_fence();
             dst = ((root == team_rank)
                    ? args->dst.info.buffer : (is_inline ? my_ctrl->data
                       : ucc_tl_shm_get_data(seg, team, team_rank)));
@@ -120,8 +121,8 @@ ucc_tl_shm_reduce_read(ucc_tl_shm_team_t *team, ucc_tl_shm_seg_t *seg,
             num_ready = 0;
         }
     }
+    ucc_memory_cpu_store_fence();
     if (tree->parent != UCC_RANK_INVALID) {
-        ucc_memory_cpu_store_fence();
         my_ctrl->pi2 = seq_num; //signals to parent
     }
     return UCC_OK;
