@@ -21,6 +21,20 @@ ucc_tl_shm_perf_key_t* ucc_tl_shm_perf_params[UCC_TL_SHM_N_PERF_PARAMS] =
     &amd_milan_16_32,
     &amd_genoa_2_96,
     &amd_genoa_8_24,
+    &nvidia_grace_1_16,
+    &nvidia_grace_1_32,
+    &nvidia_grace_1_64,
     &nvidia_grace_1_72,
+    &nvidia_grace_2_16,
+    &nvidia_grace_2_32,
+    &nvidia_grace_2_64,
+    &nvidia_grace_2_72,
+    NULL
+};
+
+// First check if perf_params match cpu/vendor/group/group_size. If not, then match just cpu/vendor
+ucc_tl_shm_perf_key_t* ucc_tl_shm_perf_params_generic[UCC_TL_SHM_N_PERF_PARAMS_GENERIC] =
+{
+    &nvidia_grace,
     NULL
 };

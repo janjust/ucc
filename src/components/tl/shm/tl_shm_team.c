@@ -126,34 +126,51 @@ static inline int check_groups_key(ucc_tl_shm_team_t     *team,
     return 0;
 }
 
+static inline void ucc_tl_shm_set_team_key(ucc_tl_shm_team_t *team, ucc_tl_shm_perf_key_t *key)
+{
+    team->perf_params_bcast  = key->bcast_func;
+    team->perf_params_reduce = key->reduce_func;
+    team->layout             = key->layout;
+    team->arch_data_size     = key->ds;
+    if (team->layout == SEG_LAYOUT_LAST) {
+        team->layout = UCC_TL_SHM_TEAM_LIB(team)->cfg.layout;
+    }
+    if (0 == UCC_TL_TEAM_RANK(team)) {
+        tl_debug(UCC_TL_TEAM_LIB(team), "using perf params: %s", key->label);
+    }
+}
+
 static inline void ucc_tl_shm_set_perf_funcs(ucc_tl_shm_team_t *team)
 {
 
-    ucc_tl_shm_perf_key_t **key = ucc_tl_shm_perf_params;
+    ucc_tl_shm_perf_key_t **key         = ucc_tl_shm_perf_params;
+    ucc_tl_shm_perf_key_t **key_generic = ucc_tl_shm_perf_params_generic;
     ucc_cpu_vendor_t        vendor;
     ucc_cpu_model_t         model;
 
     vendor = ucc_arch_get_cpu_vendor();
     model  = ucc_arch_get_cpu_model();
 
+    // First try to match based on all of (vendor, model, n_groups, group_size_0, group_size_1, ...)
     while (*key) {
         if ((*key)->cpu_vendor == vendor && (*key)->cpu_model == model &&
             check_groups_key(team, *key)) {
-            team->perf_params_bcast  = (*key)->bcast_func;
-            team->perf_params_reduce = (*key)->reduce_func;
-            team->layout             = (*key)->layout;
-            team->arch_data_size     = (*key)->ds;
-            if (team->layout == SEG_LAYOUT_LAST) {
-                team->layout = UCC_TL_SHM_TEAM_LIB(team)->cfg.layout;
-            }
-            if (0 == UCC_TL_TEAM_RANK(team)) {
-                tl_debug(UCC_TL_TEAM_LIB(team), "using perf params: %s",
-                         (*key)->label);
-            }
+            ucc_tl_shm_set_team_key(team, *key);
             return;
         }
         key++;
     }
+
+    // If no match so far, try again but with the generic key for (vendor, model)
+    while (*key_generic) {
+        if ((*key_generic)->cpu_vendor == vendor && (*key_generic)->cpu_model == model) {
+            ucc_tl_shm_set_team_key(team, *key_generic);
+            return;
+        }
+        key_generic++;
+    }
+
+    // Still no match, use the cfg's default values
     if (0 == UCC_TL_TEAM_RANK(team)) {
         tl_debug(UCC_TL_TEAM_LIB(team), "using perf params: generic");
     }
