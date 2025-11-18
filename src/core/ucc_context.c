@@ -471,6 +471,12 @@ ucc_status_t ucc_core_addr_exchange(ucc_context_t *context, ucc_oob_coll_t *oob,
 
 poll:
     if (addr_storage->oob_req) {
+        /* Defensive check: ensure oob callbacks are valid before calling */
+        if (ucc_unlikely(oob->req_test == NULL)) {
+            ucc_error("oob req_test function is NULL during addr exchange");
+            addr_storage->oob_req = NULL;
+            return UCC_ERR_NOT_IMPLEMENTED;
+        }
         status = oob->req_test(addr_storage->oob_req);
         if (status < 0) {
             oob->req_free(addr_storage->oob_req);
@@ -508,6 +514,12 @@ poll:
                 ucc_error("failed to start oob allgather");
                 return status;
             }
+            /* Validate that oob_req was properly initialized */
+            if (ucc_unlikely(addr_storage->oob_req == NULL)) {
+                ucc_error("oob allgather returned OK but request is NULL - "
+                          "possible UCX configuration error (check UCX_NET_DEVICES)");
+                return UCC_ERR_NO_MESSAGE;
+            }
             goto poll;
         }
         addr_lens = (size_t *)addr_storage->storage;
@@ -541,6 +553,12 @@ poll:
         if (UCC_OK != status) {
             ucc_error("failed to start oob allgather");
             return status;
+        }
+        /* Validate that oob_req was properly initialized */
+        if (ucc_unlikely(addr_storage->oob_req == NULL)) {
+            ucc_error("oob allgather returned OK but request is NULL - "
+                      "possible UCX configuration error (check UCX_NET_DEVICES)");
+            return UCC_ERR_NO_MESSAGE;
         }
         goto poll;
     }
