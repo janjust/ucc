@@ -365,8 +365,14 @@ UCC_KN_PHASE_REDUCE:
                             peer_seg_count * dt_size, mem_type, peer, team, task),
                           task, out);
             if (wb.dst_data) {
-                ucc_mc_memcpy(wb.dst_data, wb.reduce_loop,
-                              peer_seg_count * dt_size, mem_type, mem_type);
+                status = ucc_mc_memcpy(wb.dst_data, wb.reduce_loop,
+                                       peer_seg_count * dt_size,
+                                       mem_type, mem_type);
+                if (ucc_unlikely(UCC_OK != status)) {
+                    tl_error(UCC_TASK_LIB(task), "failed to perform memcpy");
+                    task->super.status = status;
+                    return;
+                }
             }
         }
         ucc_kn_rs_pattern_next_iter(p);

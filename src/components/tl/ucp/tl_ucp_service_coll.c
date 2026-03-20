@@ -44,7 +44,9 @@ static ucc_status_t ucc_tl_ucp_service_coll_start_executor(ucc_coll_task_t *task
 
     status = ucc_ee_executor_start(task->executor, NULL);
     if (status != UCC_OK) {
-        ucc_ee_executor_finalize(task->executor);
+        if (ucc_ee_executor_finalize(task->executor) != UCC_OK) {
+            /* best effort cleanup, return original error */
+        }
         return status;
     }
 

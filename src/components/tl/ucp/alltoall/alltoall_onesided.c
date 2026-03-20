@@ -245,7 +245,10 @@ ucc_status_t ucc_tl_ucp_alltoall_onesided_init(ucc_base_coll_args_t *coll_args,
         return status;
     }
     schedule = &tl_schedule->super.super;
-    ucc_schedule_init(schedule, coll_args, team);
+    status = ucc_schedule_init(schedule, coll_args, team);
+    if (status != UCC_OK) {
+        goto out;
+    }
     schedule->super.post     = ucc_tl_ucp_alltoall_onesided_sched_start;
     schedule->super.progress = NULL;
     schedule->super.finalize = ucc_tl_ucp_alltoall_onesided_sched_finalize;
@@ -279,9 +282,12 @@ ucc_status_t ucc_tl_ucp_alltoall_onesided_init(ucc_base_coll_args_t *coll_args,
     param.field_mask   = UCP_EP_PERF_PARAM_FIELD_MESSAGE_SIZE;
     attr.field_mask    = UCP_EP_PERF_ATTR_FIELD_ESTIMATED_TIME;
     param.message_size = nelems * ucc_dt_size(TASK_ARGS(task).src.info.datatype);;
-    ucc_tl_ucp_get_ep(
+    status = ucc_tl_ucp_get_ep(
         tl_team, (UCC_TL_TEAM_RANK(tl_team) + 1) % UCC_TL_TEAM_SIZE(tl_team),
         &ep);
+    if (status != UCC_OK) {
+        goto out;
+    }
     ucp_ep_evaluate_perf(ep, &param, &attr);
 
     rate  = (1 / attr.estimated_time) * (double)(perc_bw / 100.0);
@@ -305,13 +311,14 @@ ucc_status_t ucc_tl_ucp_alltoall_onesided_init(ucc_base_coll_args_t *coll_args,
     }
     task->alltoall_onesided.npolls = npolls;
 
-    ucc_schedule_add_task(schedule, a2a_task);
-    ucc_task_subscribe_dep(&schedule->super, a2a_task,
-                           UCC_EVENT_SCHEDULE_STARTED);
-
-    ucc_schedule_add_task(schedule, barrier_task);
-    ucc_task_subscribe_dep(a2a_task, barrier_task,
-                           UCC_EVENT_COMPLETED);
+    UCC_CHECK_GOTO(ucc_schedule_add_task(schedule, a2a_task), out, status);
+    UCC_CHECK_GOTO(ucc_task_subscribe_dep(&schedule->super, a2a_task,
+                                          UCC_EVENT_SCHEDULE_STARTED),
+                   out, status);
+    UCC_CHECK_GOTO(ucc_schedule_add_task(schedule, barrier_task), out, status);
+    UCC_CHECK_GOTO(ucc_task_subscribe_dep(a2a_task, barrier_task,
+                                          UCC_EVENT_COMPLETED),
+                   out, status);
     *task_h = &schedule->super;
     return status;
 out:
