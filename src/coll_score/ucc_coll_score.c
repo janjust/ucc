@@ -91,6 +91,7 @@ coll_score_add_range(ucc_coll_score_t *score, ucc_coll_type_t coll_type,
         ucc_msg_range_free(r);
         return UCC_ERR_INVALID_PARAM;
     }
+    /* coverity[leaked_storage] */
     return UCC_OK;
 }
 ucc_status_t ucc_coll_score_add_range(ucc_coll_score_t *score,
@@ -261,6 +262,7 @@ static ucc_status_t ucc_score_list_dup(const ucc_list_link_t *src,
     ucc_list_head_init(dst);
     ucc_list_for_each(range, src, super.list_elem) {
         r = MSG_RANGE_DUP(range);
+        /* coverity[leaked_storage] */
         ucc_list_add_tail(dst, &r->super.list_elem);
     }
     return UCC_OK;
@@ -394,6 +396,7 @@ static ucc_status_t ucc_coll_score_merge_one(ucc_list_link_t *list1,
             }
         }
     }
+    /* coverity[leaked_storage] */
     return UCC_OK;
 
 out:
@@ -578,16 +581,22 @@ static ucc_status_t str_to_tsizes(const char *str, ucc_rank_t **tsizes,
         goto out;
     }
     n_tokens = ucc_str_split_count(tokens);
-    *tsizes = ucc_malloc(2 * n_tokens * sizeof(ucc_rank_t), "ucc_tsize_ranges");
+    *tsizes = ucc_malloc((size_t)2 * n_tokens * sizeof(ucc_rank_t), "ucc_tsize_ranges");
     if (!(*tsizes)) {
         ucc_error("failed to allocate %zd bytes for ucc_tsize_ranges",
                   sizeof(ucc_rank_t) * 2 * n_tokens);
         status = UCC_ERR_NO_MEMORY;
         goto out;
     }
-    ucc_assert(']' == tokens[n_tokens - 1][strlen(tokens[n_tokens - 1]) - 1]);
-    /* remove last "]" from the parsed string, we have already checked it was present */
-    tokens[n_tokens - 1][strlen(tokens[n_tokens - 1]) - 1] = '\0';
+    {
+        size_t last_tok_len = strlen(tokens[n_tokens - 1]);
+        ucc_assert(last_tok_len > 0 &&
+                   ']' == tokens[n_tokens - 1][last_tok_len - 1]);
+        /* remove last "]" from the parsed string, we have already checked it was present */
+        if (last_tok_len > 0) {
+            tokens[n_tokens - 1][last_tok_len - 1] = '\0';
+        }
+    }
     for (i = 0; i < n_tokens; i++) {
         tokens2 = ucc_str_split(tokens[i], "-");
         if (!tokens2) {
@@ -958,8 +967,10 @@ static ucc_status_t ucc_coll_score_update_one(ucc_list_link_t *dest,
             }
         }
     }
+    /* coverity[leaked_storage] */
     return UCC_OK;
 out:
+    /* coverity[leaked_storage] */
     return status;
 }
 
