@@ -100,7 +100,10 @@ ucc_ring_pattern_set_rank(ucc_ring_pattern_t *p, ucc_rank_t rank)
         p->ring_ranks =
             (ucc_rank_t *)ucc_malloc(p->num_rings * sizeof(ucc_rank_t),
                                      "ring_ranks");
-        ucc_assert(p->ring_ranks != NULL);
+        if (!p->ring_ranks) {
+            ucc_error("failed to allocate ring_ranks");
+            return;
+        }
     }
 
     for (ring_id = 0; ring_id < p->num_rings; ring_id++) {

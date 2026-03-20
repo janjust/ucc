@@ -69,7 +69,7 @@ static inline ucc_rank_t get_right_child(ucc_rank_t size, ucc_rank_t rank,
         return UCC_RANK_INVALID;
     }
 
-    sub_right_root = get_root(size - rank - 1) + 1;
+    sub_right_root = (ucc_rank_t)((size_t)get_root(size - rank - 1) + 1);
     sub_height     = 1 << (height - 1);
 
     if (rank == root) {

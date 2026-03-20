@@ -173,7 +173,7 @@ ucc_knx_block(ucc_rank_t rank, ucc_rank_t size, ucc_kn_radix_t radix,
         return;
     }
     block_count = count;
-    while (p.iteration < iter) {
+    while (p.iteration < iter && p.iteration < p.n_iters) {
         step_radix = ucc_kn_compute_step_radix(&p);
         my_si      = ucc_kn_compute_seg_index(rank, p.radix_pow, &p);
         offset += ucc_buffer_block_offset(block_count, step_radix, my_si);
@@ -423,6 +423,7 @@ ucc_kn_rs_pattern_peer_seg(ucc_rank_t peer, ucc_knomial_pattern_t *p,
     case KN_PATTERN_REDUCE_SCATTERV:
         /* not implemented */
         ucc_assert(0);
+        break;
     default:
         ucc_assert(0);
     }
@@ -451,6 +452,7 @@ static inline void ucc_kn_rs_pattern_next_iter(ucc_knomial_pattern_t *p)
     case KN_PATTERN_REDUCE_SCATTERV:
         /* not implemented */
         ucc_assert(0);
+        break;
     default:
         ucc_assert(0);
     }

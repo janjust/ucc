@@ -103,6 +103,9 @@ static ucc_status_t ucc_topo_build_sbgp_ring(
         best_dev  = UCC_DEVICE_ID_INVALID;
 
         ucc_for_each_bit (i, host_info->visible_nics) {
+            if (i >= UCC_MAX_HOST_NICS) {
+                continue;
+            }
             nic_info = &host_info->nics[i];
             dist     = ucc_pci_distance(&gpu_info->pci, &nic_info->pci);
             if (dist < best_dist) {
