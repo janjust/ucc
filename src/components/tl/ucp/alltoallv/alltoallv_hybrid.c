@@ -717,7 +717,8 @@ ucc_status_t pairwise_manager(ucc_rank_t trank, ucc_rank_t tsize,
     int                chunk_byte_limit = UCC_TL_UCP_TEAM_LIB(team)->cfg.alltoallv_hybrid_chunk_byte_limit;
     ucc_status_t status;
     void* mem_dst;
-    int pairwise_dest, msg_size;
+    int    pairwise_dest;
+    size_t msg_size;
 
     if ((task->alltoallv_hybrid.num_in < chunk_num_limit) &&
         (task->alltoallv_hybrid.traffic_in <= chunk_byte_limit) &&

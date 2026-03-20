@@ -36,6 +36,7 @@ static inline ucc_status_t check_tl_lib_attr(const ucc_base_lib_t *lib,
     ucc_status_t      status;
 
     memset(&tl_attr, 0, sizeof(tl_attr));
+    /* coverity[forward_null] */
     status = tl_iface->lib.get_attr(NULL, &tl_attr.super);
     if (UCC_OK != status) {
         cl_error(lib, "failed to query tl %s lib attributes",

@@ -54,6 +54,7 @@ ucc_status_t ucc_event_manager_subscribe(ucc_coll_task_t *parent_task,
             em->listeners[em->n_listeners].event   = event;
             em->listeners[em->n_listeners].handler = handler;
             em->n_listeners++;
+            /* coverity[leaked_storage] */
             return UCC_OK;
         }
     }

@@ -137,7 +137,7 @@ UCC_CL_HIER_PROFILE_FUNC(ucc_status_t, ucc_cl_hier_allgatherv_init,
     size_t                  dt_size          = ucc_dt_size(coll_args->args.
                                                            dst.info_v.datatype);
     int                     in_place         = 0;
-    int                     is_contig        = 1;
+    int                     is_contig        = 0;
     size_t                  disp_counter     = 0;
     ucc_schedule_t         *schedule;
     ucc_cl_hier_schedule_t *cl_schedule;

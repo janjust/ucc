@@ -28,7 +28,7 @@ ucc_status_t ucc_ec_init(const ucc_ec_params_t *ec_params)
     int            i, n_ecs;
     ucc_ec_base_t *ec;
     ucc_status_t   status;
-    ucc_ec_attr_t  attr;
+    ucc_ec_attr_t  attr = {};
 
     pthread_mutex_lock(&ucc_ec_mutex);
     memset(ec_ops, 0, UCC_EE_LAST * sizeof(ucc_ec_ops_t *));

@@ -16,15 +16,13 @@ UCC_CLASS_INIT_FUNC(ucc_cl_hier_lib_t, const ucc_base_lib_params_t *params,
 {
     const ucc_cl_hier_lib_config_t *cl_hier_config =
         ucc_derived_of(config, ucc_cl_hier_lib_config_t);
-    ucc_config_names_array_t        requested_sbgp_tls;
+    ucc_config_names_array_t        requested_sbgp_tls = {};
     ucc_status_t                    status;
     int                             i;
 
     UCC_CLASS_CALL_SUPER_INIT(ucc_cl_lib_t, &ucc_cl_hier.super,
                               &cl_hier_config->super);
     memcpy(&self->cfg, cl_hier_config, sizeof(*cl_hier_config));
-
-    requested_sbgp_tls.count = 0;
 
     for (i = 0; i < UCC_HIER_SBGP_LAST; i++) {
         status = ucc_config_allow_list_process(&cl_hier_config->sbgp_tls[i].list,
@@ -33,16 +31,19 @@ UCC_CLASS_INIT_FUNC(ucc_cl_hier_lib_t, const ucc_base_lib_params_t *params,
 
         if (UCC_OK != status) {
             cl_error(&self->super, "failed to process sbgp tls array");
+            ucc_config_names_array_free(&requested_sbgp_tls);
             return status;
         }
         if (self->cfg.sbgp_tls[i].array.count == 0) {
             cl_error(&self->super, "no TLs are available for sbgp");
+            ucc_config_names_array_free(&requested_sbgp_tls);
             return UCC_ERR_INVALID_PARAM;
         }
         status = ucc_config_names_array_merge(&requested_sbgp_tls,
                                               &self->cfg.sbgp_tls[i].array);
         if (ucc_unlikely(UCC_OK != status)) {
             cl_error(&self->super, "failed to merge tls config names arrays");
+            ucc_config_names_array_free(&requested_sbgp_tls);
             return status;
         }
     }
@@ -75,6 +76,7 @@ static inline ucc_status_t check_tl_lib_attr(const ucc_base_lib_t *lib,
     ucc_status_t      status;
 
     memset(&tl_attr, 0, sizeof(tl_attr));
+    /* coverity[forward_null] */
     status = tl_iface->lib.get_attr(NULL, &tl_attr.super);
     if (UCC_OK != status) {
         cl_error(lib, "failed to query tl %s lib attributes",
