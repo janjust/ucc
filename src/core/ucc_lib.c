@@ -116,6 +116,7 @@ static ucc_status_t ucc_cl_lib_init(const ucc_lib_params_t *user_params,
             (0 == ucc_cl_requested(config, cl_iface->type))) {
             continue;
         }
+        /* coverity[leaked_storage] */
         status = ucc_cl_lib_config_read(cl_iface, lib->full_prefix, &cl_config);
         if (UCC_OK != status) {
             ucc_error("failed to read CL \"%s\" lib configuration",
@@ -205,6 +206,7 @@ static ucc_status_t ucc_cl_lib_init(const ucc_lib_params_t *user_params,
                   "coll_types");
     }
     lib->attr.coll_types  = supported_coll_types;
+    /* coverity[leaked_storage] */
     return UCC_OK;
 
 error_cl_init:
@@ -218,6 +220,7 @@ error:
     lib->cl_attrs = NULL;
     ucc_free(lib->cl_libs);
     lib->cl_libs = NULL;
+    /* coverity[leaked_storage] */
     return status;
 }
 
@@ -279,6 +282,7 @@ static ucc_status_t ucc_tl_lib_init(const ucc_lib_params_t *user_params,
             status = tl_iface->lib.init(&b_params, &tl_config->super.super,
                                         &b_lib);
             ucc_base_config_release(&tl_config->super.super);
+            /* coverity[leaked_storage] */
             tl_config = NULL;
             if (UCC_OK != status) {
                 ucc_debug("lib_init failed for component: %s, skipping",

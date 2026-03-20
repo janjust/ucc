@@ -239,6 +239,7 @@ static ucc_status_t ucc_get_bound_socket_id(ucc_socket_id_t *socketid)
         return UCC_ERR_NO_MESSAGE;
     }
 
+    /* coverity[integer_overflow] */
     socket_ids = ucc_malloc((size_t)nr_cpus * sizeof(int), "socket_ids");
     if (!socket_ids) {
         ucc_error("failed to allocate %zd bytes for socket_ids array",

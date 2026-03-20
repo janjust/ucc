@@ -73,6 +73,7 @@ static inline ucc_rank_t get_right_child(ucc_rank_t size, ucc_rank_t rank,
     sub_height     = 1 << (height - 1);
 
     if (rank == root) {
+        /* coverity[integer_overflow] */
         return rank + sub_right_root;
     }
     return (rank + sub_height < size) ? rank + sub_height

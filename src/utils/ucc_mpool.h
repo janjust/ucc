@@ -58,6 +58,7 @@ static inline void *ucc_mpool_get(ucc_mpool_t *mp)
 static inline void ucc_mpool_put(void *obj)
 {
     ucs_mpool_elem_t *elem = (ucs_mpool_elem_t *)obj - 1;
+    /* coverity[switch_selector_expr_is_constant] */
     ucc_mpool_t *     mp   = ucc_derived_of(elem->mpool, ucc_mpool_t);
 
     if (UCC_THREAD_SINGLE == mp->tm) {

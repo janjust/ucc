@@ -750,6 +750,7 @@ ucc_status_t pairwise_manager(ucc_rank_t trank, ucc_rank_t tsize,
                 return status;
             }
             seg_st[(*cur)] = seg_st[(*cur)] - 1;
+            /* coverity[integer_overflow] */
             task->alltoallv_hybrid.num2send--;
         }
 

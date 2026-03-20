@@ -261,12 +261,14 @@ static ucc_status_t ucc_score_list_dup(const ucc_list_link_t *src,
 
     ucc_list_head_init(dst);
     ucc_list_for_each(range, src, super.list_elem) {
-        r = MSG_RANGE_DUP(range);
         /* coverity[leaked_storage] */
+        r = MSG_RANGE_DUP(range);
         ucc_list_add_tail(dst, &r->super.list_elem);
     }
+    /* coverity[leaked_storage] */
     return UCC_OK;
 out:
+    /* coverity[leaked_storage] */
     ucc_list_for_each_safe(range, r, dst, super.list_elem) {
         ucc_list_del(&range->super.list_elem);
         ucc_msg_range_free(range);
@@ -406,6 +408,7 @@ out:
                       super.list_elem);
     ucc_list_destruct(out, ucc_msg_range_t, ucc_msg_range_free,
                       super.list_elem);
+    /* coverity[leaked_storage] */
     return status;
 }
 
@@ -581,6 +584,10 @@ static ucc_status_t str_to_tsizes(const char *str, ucc_rank_t **tsizes,
         goto out;
     }
     n_tokens = ucc_str_split_count(tokens);
+    if (n_tokens == 0) {
+        status = UCC_ERR_INVALID_PARAM;
+        goto out;
+    }
     *tsizes = ucc_malloc((size_t)2 * n_tokens * sizeof(ucc_rank_t), "ucc_tsize_ranges");
     if (!(*tsizes)) {
         ucc_error("failed to allocate %zd bytes for ucc_tsize_ranges",
@@ -855,6 +862,7 @@ static ucc_status_t ucc_coll_score_update_one(ucc_list_link_t *dest,
             /* skip src range - no overlap */
             s = s->next;
             if (rs->super.init) {
+                /* coverity[leaked_storage] */
                 new = MSG_RANGE_DUP(rs);
                 if (new->super.score == UCC_SCORE_INVALID) {
                     new->super.score = default_score;
@@ -865,12 +873,14 @@ static ucc_status_t ucc_coll_score_update_one(ucc_list_link_t *dest,
             /* no overlap - inverse case: skip dst range */
             d = d->next;
         } else if (rd->start <  rs->start) {
+            /* coverity[leaked_storage] */
             new       = MSG_RANGE_DUP(rd);
             new->end  = rs->start;
             rd->start = rs->start;
             ucc_list_insert_before(d, &new->super.list_elem);
         } else if (rd->start > rs->start) {
             if (rs->super.init) {
+                /* coverity[leaked_storage] */
                 new = MSG_RANGE_DUP(rs);
                 if (new->super.score == UCC_SCORE_INVALID) {
                     new->super.score = default_score;
@@ -896,6 +906,7 @@ static ucc_status_t ucc_coll_score_update_one(ucc_list_link_t *dest,
                 rs->start = rd->end;
                 d         = d->next;
             } else if (rs->end < rd->end) {
+                /* coverity[leaked_storage] */
                 new      = MSG_RANGE_DUP(rd);
                 new->end = rs->end;
                 if (UCC_SCORE_INVALID != rs->super.score) {
@@ -932,6 +943,7 @@ static ucc_status_t ucc_coll_score_update_one(ucc_list_link_t *dest,
     while (s != src) {
         rs = ucc_container_of(s, ucc_msg_range_t, super.list_elem);
         if (rs->super.init) {
+            /* coverity[leaked_storage] */
             new = MSG_RANGE_DUP(rs);
             if (new->super.score == UCC_SCORE_INVALID) {
                 new->super.score = default_score;

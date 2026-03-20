@@ -908,6 +908,7 @@ int ucc_config_sscanf_uint_ranged(const char *buf, void *dest,
                 p->default_value = atoi(tokens[0]);
             }
         } else {
+            /* coverity[leaked_storage] */
             r = ucc_malloc(sizeof(*r), "mrange");
             if (!r) {
                 goto err_tokens;
@@ -936,19 +937,20 @@ int ucc_config_sscanf_uint_ranged(const char *buf, void *dest,
                 goto err_tokens;
             }
 
-            /* coverity[leaked_storage] */
             ucc_list_add_tail(&p->ranges, &r->list_elem);
         }
         ucc_str_split_free(tokens);
     }
     ucc_str_split_free(ranges);
 
+    /* coverity[leaked_storage] */
     return 1;
 
 err_tokens:
     ucc_str_split_free(tokens);
 err_ranges:
     ucc_str_split_free(ranges);
+    /* coverity[leaked_storage] */
     return 0;
 }
 

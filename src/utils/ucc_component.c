@@ -180,7 +180,6 @@ ucc_status_t ucc_components_load(const char *framework_name,
         if (!new_ifaces) {
             ucc_error("failed to realloc ifaces");
             ucc_free(ifaces);
-            ifaces = NULL;
             status = UCC_ERR_NO_MEMORY;
             goto err;
         }

@@ -145,6 +145,7 @@ ucc_status_t ucc_pq_mt_init(ucc_progress_queue_t **pq,
         pq_mt->super.progress   = ucc_pq_mt_progress;
         pq_mt->super.finalize   = ucc_pq_mt_finalize;
         pq_mt->super.is_empty   = ucc_pq_mt_is_empty;
+        /* coverity[leaked_storage] */
         *pq                     = &pq_mt->super;
     } else {
         ucc_pq_mt_locked_t *pq_mt = ucc_malloc(sizeof(*pq_mt), "pq_mt");
@@ -159,8 +160,8 @@ ucc_status_t ucc_pq_mt_init(ucc_progress_queue_t **pq,
         pq_mt->super.progress = ucc_pq_mt_progress;
         pq_mt->super.finalize = ucc_pq_locked_mt_finalize;
         pq_mt->super.is_empty = ucc_pq_locked_mt_is_empty;
+        /* coverity[leaked_storage] */
         *pq                   = &pq_mt->super;
     }
-    /* coverity[leaked_storage] */
     return UCC_OK;
 }

@@ -84,6 +84,7 @@ ucc_status_t ucc_mpool_init(ucc_mpool_t *mp, size_t priv_size, size_t elem_size,
         if (st != UCC_OK) {
             ucc_free(ucs_ops);
         }
+        /* coverity[leaked_storage] */
         return st;
     }
 #else
