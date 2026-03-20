@@ -23,6 +23,9 @@ char* ucc_tl_ucp_alltoall_score_str_get(ucc_tl_ucp_team_t *team)
     char *str;
 
     str = ucc_malloc(max_size * sizeof(char));
+    if (!str) {
+        return NULL;
+    }
     ucc_snprintf_safe(str, max_size,
                       UCC_TL_UCP_ALLTOALL_DEFAULT_ALG_SELECT_STR_PATTERN,
                       ALLTOALL_DEFAULT_ALG_SWITCH * UCC_TL_TEAM_SIZE(team));

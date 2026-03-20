@@ -209,6 +209,8 @@ static inline void ucc_tl_ucp_allreduce_sliding_window_reduction(
     status = ucc_coll_task_get_executor(&task->super, &exec);
     if (ucc_unlikely(status != UCC_OK)) {
         tl_error(UCC_TASK_LIB(task), "failed to get executor");
+        task->super.status = status;
+        return;
     }
 
     status =
@@ -571,7 +573,7 @@ ucc_tl_ucp_allreduce_sliding_window_init(ucc_base_coll_args_t *coll_args,
     };
     ucc_tl_ucp_allreduce_sw_host_allgather_t *allgather_data;
     ucc_tl_ucp_task_t                        *rdma_task;
-    ucc_coll_task_t                          *barrier_task;
+    ucc_coll_task_t                          *barrier_task = NULL;
 
     if (!(coll_args->args.mask  & UCC_COLL_ARGS_FIELD_GLOBAL_WORK_BUFFER) ||
         !(coll_args->args.mask  & UCC_COLL_ARGS_FIELD_FLAGS)              ||

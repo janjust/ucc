@@ -358,7 +358,9 @@ ucc_status_t ucc_tl_ucp_reduce_srg_knomial_init(ucc_base_coll_args_t *coll_args,
     return UCC_OK;
 
 err_free_scratch:
-    ucc_mc_free(schedule->scratch_mc_header);
+    if (schedule->scratch_mc_header) {
+        ucc_mc_free(schedule->scratch_mc_header);
+    }
 err_free_schedule:
     ucc_tl_ucp_put_schedule(&schedule->super.super);
 err_out:

@@ -59,6 +59,10 @@ char *ucc_tl_ucp_allgather_score_str_get(ucc_tl_ucp_team_t *team)
                                          : UCC_TL_UCP_ALLGATHER_ALG_NEIGHBOR;
     char *                str      = ucc_malloc(max_size * sizeof(char));
     ucc_tl_ucp_context_t *ctx      = UCC_TL_UCP_TEAM_CTX(team);
+
+    if (!str) {
+        return NULL;
+    }
     uint64_t              cuda_types =
         ctx->ucp_memory_types &
         (UCC_BIT(UCC_MEMORY_TYPE_CUDA) | UCC_BIT(UCC_MEMORY_TYPE_CUDA_MANAGED));
@@ -77,9 +81,18 @@ char *ucc_tl_ucp_allgather_score_str_get(ucc_tl_ucp_team_t *team)
     if (team->topo && ucc_topo_is_single_ppn(team->topo)) {
         if (cuda_types) {
             cuda_str = ucc_malloc(max_size * sizeof(char));
+            if (!cuda_str) {
+                ucc_free(str);
+                return NULL;
+            }
             ucc_mtype_map_to_str(cuda_types, ",", cuda_str, max_size);
             if (non_cuda_types) {
                 non_cuda_str = ucc_malloc(max_size * sizeof(char));
+                if (!non_cuda_str) {
+                    ucc_free(cuda_str);
+                    ucc_free(str);
+                    return NULL;
+                }
                 ucc_mtype_map_to_str(non_cuda_types, ",", non_cuda_str,
                                      max_size);
                 ucc_snprintf_safe(

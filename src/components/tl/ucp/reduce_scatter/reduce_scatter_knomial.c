@@ -364,8 +364,10 @@ UCC_KN_PHASE_REDUCE:
                                        peer_seg_offset * dt_size),
                             peer_seg_count * dt_size, mem_type, peer, team, task),
                           task, out);
-            ucc_mc_memcpy(wb.dst_data, wb.reduce_loop, peer_seg_count * dt_size,
-                          mem_type, mem_type);
+            if (wb.dst_data) {
+                ucc_mc_memcpy(wb.dst_data, wb.reduce_loop,
+                              peer_seg_count * dt_size, mem_type, mem_type);
+            }
         }
         ucc_kn_rs_pattern_next_iter(p);
     }
