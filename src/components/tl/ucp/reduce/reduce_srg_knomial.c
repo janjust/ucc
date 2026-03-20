@@ -271,7 +271,7 @@ ucc_tl_ucp_reduce_srg_knomial_get_pipeline_params(ucc_tl_ucp_team_t *team,
                                                   ucc_pipeline_params_t *pp)
 {
     ucc_tl_ucp_lib_config_t *cfg = &team->cfg;
-    ucc_mc_attr_t mc_attr;
+    ucc_mc_attr_t mc_attr = {0};
 
     if (!ucc_pipeline_params_is_auto(&cfg->reduce_srg_kn_pipeline)) {
         *pp = cfg->reduce_srg_kn_pipeline;

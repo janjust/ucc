@@ -174,7 +174,7 @@ ucc_tl_ucp_allreduce_sra_knomial_get_pipeline_params(ucc_tl_ucp_team_t *team,
 
     if ((args->src.info.mem_type == UCC_MEMORY_TYPE_CUDA) &&
         (UCC_IS_INPLACE(*args))) {
-        ucc_mc_attr_t mc_attr;
+        ucc_mc_attr_t mc_attr = {0};
         mc_attr.field_mask = UCC_MC_ATTR_FIELD_FAST_ALLOC_SIZE;
         ucc_mc_get_attr(&mc_attr, UCC_MEMORY_TYPE_CUDA);
         pp->threshold = mc_attr.fast_alloc_size;

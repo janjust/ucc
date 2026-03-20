@@ -71,8 +71,9 @@ ucc_tl_ucp_eps_ephash_init(const ucc_base_context_params_t *params,
 }
 
 static inline ucc_status_t
-ucc_tl_ucp_context_service_init(const char *prefix, ucp_params_t ucp_params,
-                                ucp_worker_params_t              worker_params,
+ucc_tl_ucp_context_service_init(const char *prefix,
+                                const ucp_params_t *ucp_params,
+                                const ucp_worker_params_t *worker_params,
                                 const ucc_base_context_params_t *params,
                                 ucc_tl_ucp_context_t *           ctx)
 {
@@ -93,12 +94,12 @@ ucc_tl_ucp_context_service_init(const char *prefix, ucp_params_t ucp_params,
     ucc_free(service_prefix);
     service_prefix = NULL;
 
-    UCP_CHECK(ucp_init(&ucp_params, ucp_config, &ucp_context_service),
+    UCP_CHECK(ucp_init(ucp_params, ucp_config, &ucp_context_service),
               "failed to init ucp context for service worker", err_cfg, ctx);
     ucp_config_release(ucp_config);
     ucp_config = NULL;
 
-    UCP_CHECK(ucp_worker_create(ucp_context_service, &worker_params,
+    UCP_CHECK(ucp_worker_create(ucp_context_service, worker_params,
                                 &ucp_worker_service),
               "failed to create ucp service worker", err_worker_create, ctx);
 
@@ -148,9 +149,9 @@ UCC_CLASS_INIT_FUNC(ucc_tl_ucp_context_t,
     ucc_tl_ucp_lib_t   *lib;
     ucc_status_t        ucc_status = UCC_OK;
     ucp_context_attr_t  context_attr;
-    ucp_worker_params_t worker_params;
+    ucp_worker_params_t worker_params = {};
     ucp_worker_attr_t   worker_attr;
-    ucp_params_t        ucp_params;
+    ucp_params_t        ucp_params    = {};
     ucp_context_h       ucp_context;
     ucp_worker_h        ucp_worker;
     ucs_status_t        status;
@@ -327,11 +328,12 @@ UCC_CLASS_INIT_FUNC(ucc_tl_ucp_context_t,
 
     if (self->cfg.service_worker) {
         CHECK(UCC_OK != ucc_tl_ucp_context_service_init(
-                            prefix, ucp_params, worker_params, params, self),
+                            prefix, &ucp_params, &worker_params, params, self),
               "failed to init service worker", err_cfg, UCC_ERR_NO_MESSAGE,
               self);
     }
     ucc_free(prefix);
+    /* coverity[unused_value] */
     prefix = NULL;
 
     switch (self->cfg.local_copy_type) {
@@ -785,6 +787,9 @@ ucc_status_t ucc_tl_ucp_mem_unmap(const ucc_base_context_t *context, ucc_mem_map
     }
 
     data = (ucc_tl_ucp_memh_data_t *)memh->tl_data;
+    if (!data) {
+        return UCC_OK;
+    }
     if (mode == UCC_MEM_MAP_MODE_EXPORT || mode == UCC_MEM_MAP_MODE_EXPORT_OFFLOAD) {
         status = ucp_mem_unmap(ctx->worker.ucp_context, data->rinfo.mem_h);
         if (status != UCS_OK) {
@@ -818,10 +823,8 @@ ucc_status_t ucc_tl_ucp_mem_unmap(const ucc_base_context_t *context, ucc_mem_map
     }
 
     /* Free the TL data structure */
-    if (data) {
-        ucc_free(data);
-        memh->tl_data = NULL;
-    }
+    ucc_free(data);
+    memh->tl_data = NULL;
 
     return UCC_OK;
 }
