@@ -908,7 +908,7 @@ int ucc_config_sscanf_uint_ranged(const char *buf, void *dest,
                 p->default_value = atoi(tokens[0]);
             }
         } else {
-            /* coverity[leaked_storage] */
+            /* coverity[overwrite_var] */
             r = ucc_malloc(sizeof(*r), "mrange");
             if (!r) {
                 goto err_tokens;

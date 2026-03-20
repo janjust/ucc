@@ -17,7 +17,7 @@ ucc_status_t ucc_mrange_uint_copy(ucc_mrange_uint_t       *dst,
     dst->default_value = src->default_value;
     ucc_list_head_init(&dst->ranges);
     ucc_list_for_each(r, &src->ranges, list_elem) {
-        /* coverity[leaked_storage] */
+        /* coverity[overwrite_var] */
         r_dup = ucc_malloc(sizeof(*r_dup), "range_dup");
         if (ucc_unlikely(!r_dup)) {
             ucc_error("failed to allocate %zd bytes for mrange",
@@ -31,6 +31,7 @@ ucc_status_t ucc_mrange_uint_copy(ucc_mrange_uint_t       *dst,
         ucc_list_add_tail(&dst->ranges, &r_dup->list_elem);
     }
 
+    /* coverity[leaked_storage] */
     return UCC_OK;
 err:
     ucc_mrange_uint_destroy(dst);

@@ -116,7 +116,7 @@ static ucc_status_t ucc_cl_lib_init(const ucc_lib_params_t *user_params,
             (0 == ucc_cl_requested(config, cl_iface->type))) {
             continue;
         }
-        /* coverity[leaked_storage] */
+        /* coverity[overwrite_var] */
         status = ucc_cl_lib_config_read(cl_iface, lib->full_prefix, &cl_config);
         if (UCC_OK != status) {
             ucc_error("failed to read CL \"%s\" lib configuration",
@@ -282,7 +282,7 @@ static ucc_status_t ucc_tl_lib_init(const ucc_lib_params_t *user_params,
             status = tl_iface->lib.init(&b_params, &tl_config->super.super,
                                         &b_lib);
             ucc_base_config_release(&tl_config->super.super);
-            /* coverity[leaked_storage] */
+            /* coverity[overwrite_var] */
             tl_config = NULL;
             if (UCC_OK != status) {
                 ucc_debug("lib_init failed for component: %s, skipping",
