@@ -810,6 +810,11 @@ ucc_status_t ucc_context_create_proc_info(
                 t_params.scope      = UCC_CL_LAST + 1;
                 t_params.scope_id   = 0;
                 t_params.id         = 0;
+                /* t_params.team is intentionally NULL: the service team is a
+                 * bootstrap team with no parent UCC team. service_ctx is always
+                 * a TL context whose create_post does not dereference params->team.
+                 * Assert service_ctx is valid before calling into its vtable. */
+                ucc_assert(ctx->service_ctx != NULL);
                 t_params.team       = NULL;
                 t_params.map.type   = UCC_EP_MAP_FULL;
                 t_params.map.ep_num = t_params.size;
