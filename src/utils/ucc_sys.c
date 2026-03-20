@@ -166,6 +166,9 @@ ucc_open_output_stream(const char *config_str, ucc_log_level_t err_log_level,
 
         len = strcspn(p, ":");
         template = strndup(p, len);
+        if (!template) {
+            return UCC_ERR_NO_MEMORY;
+        }
         ucc_fill_filename_template(template, filename, sizeof(filename));
         free(template);
 

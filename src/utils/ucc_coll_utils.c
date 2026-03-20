@@ -445,7 +445,7 @@ ucc_ep_map_from_array_generic(void **array, ucc_rank_t size,
                               ucc_rank_t full_size, int need_free, int is64)
 {
     int          is_const_stride = 0;
-    ucc_ep_map_t map;
+    ucc_ep_map_t map             = {};
     int64_t      stride;
     ucc_rank_t   i;
 
@@ -734,7 +734,7 @@ void ucc_coll_str(const ucc_coll_task_t *task, char *str, size_t len,
 
     if (verbosity >= UCC_LOG_LEVEL_INFO) {
         size_t tl_info_len = 0;
-        char task_info[64], cl_info[16], tl_info[32];
+        char task_info[64] = "", cl_info[16] = "", tl_info[32] = "";
 
         if (!task->team) {
             /* zero size collective, no CL or TL */

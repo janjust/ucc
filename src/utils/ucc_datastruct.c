@@ -30,6 +30,7 @@ ucc_status_t ucc_mrange_uint_copy(ucc_mrange_uint_t       *dst,
         ucc_list_add_tail(&dst->ranges, &r_dup->list_elem);
     }
 
+    /* coverity[leaked_storage] */
     return UCC_OK;
 err:
     ucc_mrange_uint_destroy(dst);

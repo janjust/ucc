@@ -550,11 +550,12 @@ static ucc_status_t ucc_apply_file_cfg_value(void *              opts,
     strncat(var, name, left);
 
     base_prefix_var = strstr(var, "UCC_");
-    cfg_value =
-        ucc_file_config_get(ucc_global_config.file_cfg, base_prefix_var,
-                            section);
-    if (cfg_value) {
-        return ucc_config_parser_set_value(opts, fields, name, cfg_value);
+    if (base_prefix_var) {
+        cfg_value = ucc_file_config_get(ucc_global_config.file_cfg,
+                                        base_prefix_var, section);
+        if (cfg_value) {
+            return ucc_config_parser_set_value(opts, fields, name, cfg_value);
+        }
     };
 
     if (base_prefix_var != var) {
@@ -935,6 +936,7 @@ int ucc_config_sscanf_uint_ranged(const char *buf, void *dest,
                 goto err_tokens;
             }
 
+            /* coverity[leaked_storage] */
             ucc_list_add_tail(&p->ranges, &r->list_elem);
         }
         ucc_str_split_free(tokens);

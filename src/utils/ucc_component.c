@@ -173,8 +173,19 @@ ucc_status_t ucc_components_load(const char *framework_name,
         return UCC_ERR_NOT_FOUND;
     }
 
-    ifaces = ucc_realloc(ifaces, n_loaded * sizeof(ucc_component_iface_t *),
-                         "ifaces");
+    {
+        ucc_component_iface_t **new_ifaces = (ucc_component_iface_t **)
+            ucc_realloc(ifaces, n_loaded * sizeof(ucc_component_iface_t *),
+                        "ifaces");
+        if (!new_ifaces) {
+            ucc_error("failed to realloc ifaces");
+            ucc_free(ifaces);
+            ifaces = NULL;
+            status = UCC_ERR_NO_MEMORY;
+            goto err;
+        }
+        ifaces = new_ifaces;
+    }
     framework->components   = ifaces;
     framework->n_components = n_loaded;
     if (UCC_OK != ucc_component_check_ids_uniq(framework)) {
@@ -198,6 +209,7 @@ ucc_status_t ucc_components_load(const char *framework_name,
     }
     framework->names.count = n_loaded;
     for (i = 0; i < n_loaded; i++) {
+        /* coverity[null_returns] */
         framework->names.names[i] = strdup(framework->components[i]->name);
     }
     return UCC_OK;

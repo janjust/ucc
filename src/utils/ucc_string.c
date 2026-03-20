@@ -308,10 +308,15 @@ void ucc_fill_filename_template(const char *tmpl, char *buf, size_t max)
         case 'c':
             snprintf(p, end - p, "%02d", ucc_get_first_cpu());
             break;
-        case 't':
-            t = time(NULL);
-            strftime(p, end - p, "%Y-%m-%d-%H-%M-%S", localtime(&t));
+        case 't': {
+            struct tm *tm_info;
+            t       = time(NULL);
+            tm_info = localtime(&t);
+            if (tm_info) {
+                strftime(p, end - p, "%Y-%m-%d-%H-%M-%S", tm_info);
+            }
             break;
+        }
         case 'u':
             snprintf(p, end - p, "%s", ucc_basename(ucc_get_user_name()));
             break;

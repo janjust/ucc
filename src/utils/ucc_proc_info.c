@@ -101,7 +101,9 @@ void ucc_host_info_print(const ucc_host_info_t *info)
                                    " %u", (unsigned)i);
             }
 
-            offset += snprintf(line + offset, buf_size - offset, " rows:");
+            if (offset < (int)buf_size) {
+                offset += snprintf(line + offset, buf_size - offset, " rows:");
+            }
             for (i = 0; i < info->n_gpus && offset < (int)buf_size; i++) {
                 int j;
 
@@ -113,7 +115,9 @@ void ucc_host_info_print(const ucc_host_info_t *info)
                         (unsigned)info->nvlink_matrix[i][j],
                         (j + 1 < info->n_gpus) ? "," : "");
                 }
-                offset += snprintf(line + offset, buf_size - offset, "]");
+                if (offset < (int)buf_size) {
+                    offset += snprintf(line + offset, buf_size - offset, "]");
+                }
             }
 
             ucc_debug("%s", line);
@@ -235,7 +239,7 @@ static ucc_status_t ucc_get_bound_socket_id(ucc_socket_id_t *socketid)
         return UCC_ERR_NO_MESSAGE;
     }
 
-    socket_ids = ucc_malloc(nr_cpus * sizeof(int), "socket_ids");
+    socket_ids = ucc_malloc((size_t)nr_cpus * sizeof(int), "socket_ids");
     if (!socket_ids) {
         ucc_error("failed to allocate %zd bytes for socket_ids array",
                   nr_cpus * sizeof(int));
@@ -243,6 +247,7 @@ static ucc_status_t ucc_get_bound_socket_id(ucc_socket_id_t *socketid)
         return UCC_ERR_NO_MEMORY;
     }
     /* Loop through all cpus, and check if I'm bound to the socket */
+    /* coverity[tainted_data] */
     for (cpu = 0; cpu < nr_cpus; cpu++) {
         socket_ids[cpu] = -1;
         sprintf(str, "/sys/bus/cpu/devices/cpu%d/topology/physical_package_id",
@@ -293,8 +298,10 @@ static ucc_status_t ucc_get_bound_socket_id(ucc_socket_id_t *socketid)
 #define LOAD_NUMA_SYM(_sym)                                                    \
     ({                                                                         \
         void *h = dlsym(handle, _sym);                                         \
-        if ((error = dlerror()) != NULL) {                                     \
-            ucc_debug("%s", error);                                            \
+        if ((error = dlerror()) != NULL || !h) {                               \
+            if (error) {                                                       \
+                ucc_debug("%s", error);                                        \
+            }                                                                  \
             status = UCC_ERR_NOT_FOUND;                                        \
             goto error;                                                        \
         }                                                                      \

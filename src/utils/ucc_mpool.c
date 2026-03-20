@@ -78,12 +78,25 @@ ucc_status_t ucc_mpool_init(ucc_mpool_t *mp, size_t priv_size, size_t elem_size,
     params.grow_factor     = 1.0;
     params.ops             = ucs_ops;
     params.name            = name;
-
-    return ucs_status_to_ucc_status(ucs_mpool_init(&params, &mp->super));
+    {
+        ucc_status_t st = ucs_status_to_ucc_status(ucs_mpool_init(&params,
+                                                                   &mp->super));
+        if (st != UCC_OK) {
+            ucc_free(ucs_ops);
+        }
+        return st;
+    }
 #else
-    return ucs_status_to_ucc_status(
-        ucs_mpool_init(&mp->super, priv_size, elem_size, align_offset,
-                       alignment, elems_per_chunk, max_elems, ucs_ops, name));
+    {
+        ucc_status_t st = ucs_status_to_ucc_status(
+            ucs_mpool_init(&mp->super, priv_size, elem_size, align_offset,
+                           alignment, elems_per_chunk, max_elems, ucs_ops,
+                           name));
+        if (st != UCC_OK) {
+            ucc_free(ucs_ops);
+        }
+        return st;
+    }
 #endif
 }
 
