@@ -219,7 +219,12 @@ exit_unlock_mutex:
 
 __attribute__((destructor)) static void ucc_destructor(void)
 {
-    if (ucc_global_config.initialized) {
+    int initialized;
+
+    pthread_mutex_lock(&ucc_constructor_mutex);
+    initialized = ucc_global_config.initialized;
+    pthread_mutex_unlock(&ucc_constructor_mutex);
+    if (initialized) {
         ucc_log_cleanup();
 #ifdef HAVE_PROFILING
         ucc_profile_cleanup();

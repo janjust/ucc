@@ -33,7 +33,7 @@ ucc_status_t ucc_mc_init(const ucc_mc_params_t *mc_params)
     int            i, n_mcs;
     ucc_mc_base_t *mc;
     ucc_status_t   status;
-    ucc_mc_attr_t attr;
+    ucc_mc_attr_t attr = {};
 
     memset(mc_ops, 0, UCC_MEMORY_TYPE_LAST * sizeof(ucc_mc_ops_t *));
     n_mcs = ucc_global_config.mc_framework.n_components;
@@ -150,6 +150,7 @@ ucc_status_t ucc_mc_free(ucc_mc_buffer_header_t *h_ptr)
                                UCC_MEMORY_TYPE_CUDA : h_ptr->mt;
 
     UCC_CHECK_MC_AVAILABLE(mt);
+    /* coverity[missing_lock] */
     return mc_ops[mt]->mem_free(h_ptr);
 }
 

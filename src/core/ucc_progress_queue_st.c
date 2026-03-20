@@ -89,6 +89,7 @@ ucc_status_t ucc_pq_st_init(ucc_progress_queue_t **pq)
     pq_st->super.finalize = ucc_pq_st_finalize;
     pq_st->super.is_empty = ucc_pq_st_is_empty;
 
+    /* coverity[leaked_storage] */
     *pq                   = &pq_st->super;
     return UCC_OK;
 }

@@ -106,6 +106,7 @@ static int ucc_pq_locked_mt_is_empty(ucc_progress_queue_t *pq)
     ucc_pq_mt_locked_t *pq_mt = ucc_derived_of(pq, ucc_pq_mt_locked_t);
 
     /* this function should not be very accurate for the purpose of progress throttling */
+    /* coverity[missing_lock] */
     return ucc_list_is_empty(&pq_mt->queue);
 }
 
@@ -160,5 +161,6 @@ ucc_status_t ucc_pq_mt_init(ucc_progress_queue_t **pq,
         pq_mt->super.is_empty = ucc_pq_locked_mt_is_empty;
         *pq                   = &pq_mt->super;
     }
+    /* coverity[leaked_storage] */
     return UCC_OK;
 }
