@@ -6,6 +6,7 @@
 
 #ifndef ALLTOALL_H_
 #define ALLTOALL_H_
+/* coverity[include_recursion] */
 #include "../cl_hier_coll.h"
 
 enum

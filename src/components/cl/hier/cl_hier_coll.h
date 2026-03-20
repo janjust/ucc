@@ -11,6 +11,7 @@
 #include "components/mc/ucc_mc.h"
 #include "allreduce/allreduce.h"
 #include "alltoallv/alltoallv.h"
+/* coverity[include_recursion] */
 #include "alltoall/alltoall.h"
 #include "barrier/barrier.h"
 #include "bcast/bcast.h"
