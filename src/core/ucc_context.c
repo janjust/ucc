@@ -627,7 +627,7 @@ ucc_status_t ucc_context_create_proc_info(
 {
     uint32_t                  topo_required       = 0;
     uint64_t                  created_ctx_counter = 0;
-    ucc_base_context_params_t b_params;
+    ucc_base_context_params_t b_params = {};
     ucc_base_context_t       *b_ctx;
     ucc_base_ctx_attr_t       c_attr;
     ucc_cl_lib_attr_t         l_attr;
@@ -813,6 +813,7 @@ ucc_status_t ucc_context_create_proc_info(
                 t_params.team       = NULL;
                 t_params.map.type   = UCC_EP_MAP_FULL;
                 t_params.map.ep_num = t_params.size;
+                /* coverity[forward_null] */
                 status            = UCC_TL_CTX_IFACE(ctx->service_ctx)
                              ->team.create_post(&ctx->service_ctx->super,
                                                 &t_params, &b_team);
@@ -1003,6 +1004,7 @@ ucc_status_t ucc_context_progress_register(ucc_context_t *ctx,
     entry->fn  = fn;
     entry->arg = progress_arg;
     ucc_list_add_tail(&ctx->progress_list, &entry->list_elem);
+    /* coverity[leaked_storage] */
     return UCC_OK;
 }
 
@@ -1291,7 +1293,7 @@ ucc_status_t ucc_mem_map_export(ucc_context_h         context,
     ucc_config_names_array_t *tls_names       = &ctx->all_tls;
     ucc_mem_map_memh_t       *local_memh;
     ucc_mem_map_memh_t       *exported_memh;
-    void                    **packed_buffers;
+    void                    **packed_buffers = NULL;
     ucc_status_t              status;
     ucc_tl_lib_t             *tl_lib;
     int                       i;
@@ -1491,6 +1493,7 @@ failed_mem_map:
         ucc_free(local_memh->tl_h);
     }
     ucc_free(local_memh);
+    ucc_free(packed_buffers);
     *memh      = NULL;
     *memh_size = 0;
     return status;

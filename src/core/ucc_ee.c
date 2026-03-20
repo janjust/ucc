@@ -111,6 +111,7 @@ ucc_status_t ucc_ee_set_event_internal(ucc_ee_h ee, ucc_ev_t *ev, ucc_queue_head
     ucc_debug("EE Event Set. ee:%p, queue:%p ev_type:%s ",
               ee, queue, ucc_ee_ev_names[ev->ev_type]);
 
+    /* coverity[leaked_storage] */
     return UCC_OK;
 }
 

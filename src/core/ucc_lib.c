@@ -144,7 +144,8 @@ static ucc_status_t ucc_cl_lib_init(const ucc_lib_params_t *user_params,
         if (UCC_OK != status) {
             ucc_error("failed to query cl lib %s attr",
                       cl_lib->iface->super.name);
-            return status;
+            cl_iface->lib.finalize(&cl_lib->super);
+            goto error_cfg_read;
         }
         ucc_debug("lib_prefix \"%s\": initialized component \"%s\" score %d",
                   config->full_prefix, cl_iface->super.name,
@@ -214,7 +215,9 @@ error_cfg_read:
     }
 error:
     ucc_free(lib->cl_attrs);
+    lib->cl_attrs = NULL;
     ucc_free(lib->cl_libs);
+    lib->cl_libs = NULL;
     return status;
 }
 
@@ -240,7 +243,7 @@ static ucc_status_t ucc_tl_lib_init(const ucc_lib_params_t *user_params,
     ucc_status_t          status;
     int                   i, n_tls;
     ucc_tl_lib_t         *tl_lib;
-    ucc_tl_lib_config_t  *tl_config;
+    ucc_tl_lib_config_t  *tl_config = NULL;
     ucc_base_lib_t *      b_lib;
     ucc_base_lib_params_t b_params;
     ucc_tl_iface_t       *tl_iface;
@@ -276,6 +279,7 @@ static ucc_status_t ucc_tl_lib_init(const ucc_lib_params_t *user_params,
             status = tl_iface->lib.init(&b_params, &tl_config->super.super,
                                         &b_lib);
             ucc_base_config_release(&tl_config->super.super);
+            tl_config = NULL;
             if (UCC_OK != status) {
                 ucc_debug("lib_init failed for component: %s, skipping",
                           tl_iface->super.name);
@@ -376,6 +380,20 @@ ucc_status_t ucc_init_version(unsigned api_major_version,
     *lib_p = lib;
     return UCC_OK;
 error:
+    ucc_free(lib->full_prefix);
+    if (lib->cl_libs) {
+        for (int i = 0; i < lib->n_cl_libs_opened; i++) {
+            lib->cl_libs[i]->iface->lib.finalize(&lib->cl_libs[i]->super);
+        }
+        ucc_free(lib->cl_libs);
+    }
+    ucc_free(lib->cl_attrs);
+    if (lib->tl_libs) {
+        for (int i = 0; i < lib->n_tl_libs_opened; i++) {
+            lib->tl_libs[i]->iface->lib.finalize(&lib->tl_libs[i]->super);
+        }
+        ucc_free(lib->tl_libs);
+    }
     ucc_free(lib);
     return status;
 }
