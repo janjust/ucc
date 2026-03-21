@@ -818,7 +818,7 @@ ucc_status_t ucc_context_create_proc_info(
                 t_params.team       = NULL;
                 t_params.map.type   = UCC_EP_MAP_FULL;
                 t_params.map.ep_num = t_params.size;
-                /* coverity[forward_null] */
+                /* coverity[var_deref_model] */
                 status            = UCC_TL_CTX_IFACE(ctx->service_ctx)
                              ->team.create_post(&ctx->service_ctx->super,
                                                 &t_params, &b_team);

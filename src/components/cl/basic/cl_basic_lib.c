@@ -39,7 +39,7 @@ static inline ucc_status_t check_tl_lib_attr(const ucc_base_lib_t *lib,
     /* NULL is passed intentionally: get_attr queries static TL attributes
      * that do not require a lib instance. Assert the vtable entry is set. */
     ucc_assert(tl_iface->lib.get_attr != NULL);
-    /* coverity[forward_null] */
+    /* coverity[var_deref_model] */
     status = tl_iface->lib.get_attr(NULL, &tl_attr.super);
     if (UCC_OK != status) {
         cl_error(lib, "failed to query tl %s lib attributes",
