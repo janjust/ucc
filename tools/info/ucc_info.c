@@ -8,6 +8,7 @@
 
 #include "ucc_info.h"
 #include "core/ucc_global_opts.h"
+#include "core/ucc_lib.h"
 #include "utils/ucc_parser.h"
 #include "utils/ucc_log.h"
 #include "utils/ucc_datastruct.h"
@@ -15,6 +16,7 @@
 #include "components/cl/ucc_cl.h"
 #include <getopt.h>
 #include <stdlib.h>
+#include <string.h>
 
 static void usage()
 {
@@ -26,7 +28,7 @@ static void usage()
     printf("  -a Show also hidden configuration\n");
     printf("  -f Show fully decorated output\n");
     printf("  -s Show default components scores\n");
-    printf("  -A Show collective algorithms available for selection\n");
+    printf("  -A Show collective algorithms and supported collectives\n");
     printf("  -h Show this help message\n");
 
     printf("\n");
@@ -41,7 +43,17 @@ static void print_algorithm_info(ucc_base_coll_alg_info_t *info)
     }
 }
 
+static void print_default_algorithm_info(const char *component,
+                                         const char *component_name,
+                                         ucc_coll_type_t coll_type)
+{
+    printf("      %16s : supported by default %s/%s %s implementation "
+           "(not a selectable algorithm id)\n", "default", component,
+           component_name, ucc_coll_type_str(coll_type));
+}
+
 static void print_component_algs(ucc_base_coll_alg_info_t **alg_info,
+                                 uint64_t supported_colls,
                                  const char *component,
                                  const char *component_name)
 {
@@ -49,7 +61,7 @@ static void print_component_algs(ucc_base_coll_alg_info_t **alg_info,
     int i;
 
     for (i = 0; i < UCC_COLL_TYPE_NUM; i++) {
-        if (alg_info[i]) {
+        if (alg_info[i] || (supported_colls & UCC_BIT(i))) {
             have_algs = 1;
             break;
         }
@@ -57,14 +69,53 @@ static void print_component_algs(ucc_base_coll_alg_info_t **alg_info,
     if (have_algs) {
         printf("%s/%s algorithms:\n", component, component_name);
         for (i = 0; i < UCC_COLL_TYPE_NUM; i++) {
+            ucc_coll_type_t coll_type = (ucc_coll_type_t)UCC_BIT(i);
+
+            if (alg_info[i] || (supported_colls & coll_type)) {
+                printf("  %s\n", ucc_coll_type_str(coll_type));
+            }
+
             if (alg_info[i]) {
-                printf("  %s\n",
-                       ucc_coll_type_str((ucc_coll_type_t)UCC_BIT(i)));
                 print_algorithm_info(alg_info[i]);
+            } else if (supported_colls & coll_type) {
+                print_default_algorithm_info(component, component_name,
+                                             coll_type);
             }
         }
         printf("\n");
     }
+}
+
+static uint64_t get_cl_supported_colls(const ucc_lib_info_t *lib,
+                                       const ucc_cl_iface_t *cl)
+{
+    int i;
+
+    for (i = 0; i < lib->n_cl_libs_opened; i++) {
+        if (lib->cl_libs[i]->iface == cl) {
+            return lib->cl_attrs[i].super.attr.coll_types;
+        }
+    }
+    return 0;
+}
+
+static uint64_t get_tl_supported_colls(const ucc_lib_info_t *lib,
+                                       ucc_tl_iface_t *tl)
+{
+    ucc_tl_lib_attr_t attr;
+    ucc_status_t      status;
+    int               i;
+
+    memset(&attr, 0, sizeof(attr));
+    for (i = 0; i < lib->n_tl_libs_opened; i++) {
+        if (lib->tl_libs[i]->iface == tl) {
+            status = tl->lib.get_attr(&lib->tl_libs[i]->super, &attr.super);
+            return (UCC_OK == status) ? attr.super.attr.coll_types : 0;
+        }
+    }
+
+    status = tl->lib.get_attr(NULL, &attr.super);
+    return (UCC_OK == status) ? attr.super.attr.coll_types : 0;
 }
 
 int main(int argc, char **argv)
@@ -79,6 +130,7 @@ int main(int argc, char **argv)
     ucc_status_t             status;
     ucc_tl_iface_t *         tl;
     ucc_cl_iface_t *         cl;
+    ucc_lib_info_t *         lib_info;
 
     print_flags = (ucc_config_print_flags_t)0;
     print_opts  = 0;
@@ -150,6 +202,7 @@ int main(int argc, char **argv)
         ucc_config_parser_print_all_opts(stdout, "UCC_", print_flags,
                                          &ucc_config_global_list);
     }
+    lib_info = (ucc_lib_info_t *)lib;
     if (show_scores) {
         if (cfg->cl_framework.n_components) {
             printf("Default CLs scores:");
@@ -172,13 +225,17 @@ int main(int argc, char **argv)
         for (c = 0; c < cfg->cl_framework.n_components; c++) {
             cl =
                 ucc_derived_of(cfg->cl_framework.components[c], ucc_cl_iface_t);
-            print_component_algs(cl->alg_info, "cl", cl->super.name);
+            print_component_algs(cl->alg_info,
+                                 get_cl_supported_colls(lib_info, cl),
+                                 "cl", cl->super.name);
         }
 
         for (c = 0; c < cfg->tl_framework.n_components; c++) {
             tl =
                 ucc_derived_of(cfg->tl_framework.components[c], ucc_tl_iface_t);
-            print_component_algs(tl->alg_info, "tl", tl->super.name);
+            print_component_algs(tl->alg_info,
+                                 get_tl_supported_colls(lib_info, tl),
+                                 "tl", tl->super.name);
         }
     }
     ucc_finalize(lib);
