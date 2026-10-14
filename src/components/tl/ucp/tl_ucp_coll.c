@@ -27,6 +27,24 @@
 #include "fanout/fanout.h"
 #include "scatterv/scatterv.h"
 
+#include <stdio.h>
+#include <unistd.h>
+
+/* DYNSEG PROBE: review instrumentation for openucx/ucc#1149, not for merge. */
+unsigned long ucc_tl_ucp_probe_ctx_hits;
+unsigned long ucc_tl_ucp_probe_ctx_hits_with_memh;
+unsigned long ucc_tl_ucp_probe_memh_hits;
+unsigned long ucc_tl_ucp_probe_imports;
+
+__attribute__((destructor)) static void ucc_tl_ucp_probe_report(void)
+{
+    fprintf(stderr,
+            "DYNSEG_PROBE pid=%d imports=%lu memh_hits=%lu ctx_hits=%lu "
+            "ctx_hits_with_memh=%lu\n",
+            (int)getpid(), ucc_tl_ucp_probe_imports, ucc_tl_ucp_probe_memh_hits,
+            ucc_tl_ucp_probe_ctx_hits, ucc_tl_ucp_probe_ctx_hits_with_memh);
+}
+
 /* Selects which buffer is mapped in dynamic_segment_map_memh */
 enum { DYN_SEG_DST = 0, DYN_SEG_SRC = 1 };
 
@@ -679,6 +697,7 @@ dynamic_segment_import_memory_handles(ucc_tl_ucp_dyn_seg_args_t *args)
         args->task->dynamic_segments.src_global = NULL;
         args->task->dynamic_segments.dst_global = global;
     }
+    ucc_tl_ucp_probe_imports++;
 
     return UCC_OK;
 out:

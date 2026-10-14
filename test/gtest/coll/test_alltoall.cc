@@ -36,6 +36,36 @@ public:
         return job.create_team(reference_ranks, true, is_contig, true);
     }
 
+    /* DYNSEG PROBE (review of openucx/ucc#1149, not for merge): same rank
+     * selection as make_dyn_seg_team, onesided team optional. */
+    UccTeam_h make_probe_team(UccJob &job, int team_id, bool onesided)
+    {
+        UccTeam_h        ref_team  = UccJob::getStaticTeams()[team_id];
+        bool             is_contig = true;
+        std::vector<int> reference_ranks;
+
+        for (auto i = 0; i < ref_team->n_procs; i++) {
+            int rank = ref_team->procs[i].p->job_rank;
+            reference_ranks.push_back(rank);
+            if (is_contig && i > 0 &&
+                (rank - reference_ranks[i - 1] > 1 ||
+                 reference_ranks[i - 1] - rank > 1)) {
+                is_contig = false;
+            }
+        }
+        return job.create_team(reference_ranks, true, is_contig, onesided);
+    }
+
+    /* DYNSEG PROBE: clear the whole dst (reset() only clears one block). */
+    void probe_clear_dst(UccCollCtxVec &ctxs)
+    {
+        for (gtest_ucc_coll_ctx_t *ctx : ctxs) {
+            ucc_coll_args_t *coll = ctx->args;
+            memset(coll->dst.info.buffer, 0,
+                   ucc_dt_size(coll->dst.info.datatype) * coll->dst.info.count);
+        }
+    }
+
     void data_init(int nprocs, ucc_datatype_t dtype,
                    size_t single_rank_count, UccCollCtxVec &ctxs,
                    UccTeam_h team, bool persistent)
@@ -368,6 +398,107 @@ UCC_TEST_P(test_alltoall_0, persistent_dynamic_segment_put)
         reset(ctxs);
     }
     data_fini_onesided(ctxs);
+}
+
+/* DYNSEG PROBE (review of openucx/ucc#1149, not for merge).
+ * The Open MPI case: no context-mapped segments, plain per-rank buffers, no
+ * memh, no MEM_MAPPED flag.  Remote addresses can only be resolved through the
+ * exchanged dynamic-segment handles.  GET and PUT, single-shot and persistent
+ * (3 posts, dst fully cleared between posts), small and zcopy-sized blocks. */
+UCC_TEST_P(test_alltoall_0, dynseg_probe_noctx)
+{
+    const int            team_id  = std::get<0>(GetParam());
+    const ucc_datatype_t dtype    = std::get<1>(GetParam());
+    ucc_memory_type_t    mem_type = std::get<2>(GetParam());
+    gtest_ucc_inplace_t  inplace  = std::get<3>(GetParam());
+    const int            count    = std::get<4>(GetParam());
+    int                  size     = UccJob::getStaticTeams()[team_id]->procs.size();
+
+    if (mem_type != UCC_MEMORY_TYPE_HOST || inplace == TEST_INPLACE) {
+        UCC_TEST_SKIP_R("probe covers host, non-inplace only");
+    }
+    SET_MEM_TYPE(mem_type);
+    this->set_inplace(inplace);
+    for (const char *alg : {"get", "put"}) {
+        ucc_job_env_t env = {{"UCC_TL_UCP_TUNE", "alltoall:0-inf:@onesided"},
+                             {"UCC_TL_UCP_ALLTOALL_ONESIDED_ALG", alg}};
+        UccJob        job(size, UccJob::UCC_JOB_CTX_GLOBAL, env);
+        UccTeam_h     team = make_probe_team(job, team_id, false);
+
+        for (int cnt : {count, 8192}) {
+            for (bool persistent : {false, true}) {
+                UccCollCtxVec ctxs;
+
+                data_init(size, dtype, cnt, ctxs, persistent);
+                {
+                    UccReq req(team, ctxs);
+
+                    for (int n = 0; n < (persistent ? 3 : 1); n++) {
+                        req.start();
+                        req.wait();
+                        EXPECT_EQ(true, data_validate(ctxs))
+                            << "alg " << alg << " count " << cnt
+                            << " persistent " << persistent << " post " << n;
+                        probe_clear_dst(ctxs);
+                    }
+                }
+                data_fini(ctxs);
+            }
+        }
+    }
+}
+
+/* DYNSEG PROBE (review of openucx/ucc#1149, not for merge).
+ * Rank 0's src/dst live inside its own context-mapped segments; every other
+ * rank uses plain buffers.  No MEM_MAPPED flag and no memh, so dynamic
+ * segments are used, but rank 0's resolver finds its buffer in a context
+ * segment first and targets the peer's context segment at the same offset.
+ * Expected to FAIL on the PR as posted (resolver checks context segments
+ * before the exchanged handles). */
+UCC_TEST_P(test_alltoall_0, dynseg_probe_mixed)
+{
+    const int            team_id  = std::get<0>(GetParam());
+    const ucc_datatype_t dtype    = std::get<1>(GetParam());
+    ucc_memory_type_t    mem_type = std::get<2>(GetParam());
+    gtest_ucc_inplace_t  inplace  = std::get<3>(GetParam());
+    const int            count    = std::get<4>(GetParam());
+    int                  size     = UccJob::getStaticTeams()[team_id]->procs.size();
+
+    if (mem_type != UCC_MEMORY_TYPE_HOST || inplace == TEST_INPLACE ||
+        size < 2) {
+        UCC_TEST_SKIP_R("probe covers host, non-inplace, size >= 2 only");
+    }
+    SET_MEM_TYPE(mem_type);
+    this->set_inplace(inplace);
+    for (const char *alg : {"get", "put"}) {
+        ucc_job_env_t env = {{"UCC_TL_UCP_TUNE", "alltoall:0-inf:@onesided"},
+                             {"UCC_TL_UCP_ALLTOALL_ONESIDED_ALG", alg}};
+        UccJob        job(size, UccJob::UCC_JOB_CTX_GLOBAL_ONESIDED, env);
+        UccTeam_h     team = make_probe_team(job, team_id, true);
+        UccCollCtxVec ctxs;
+
+        data_init(size, dtype, count, ctxs, false);
+        {
+            ucc_coll_args_t *a0  = ctxs[0]->args;
+            size_t           len = ucc_dt_size(dtype) * a0->src.info.count;
+            void *ctx_src = team->procs[0].p->onesided_buf[0];
+            void *ctx_dst = team->procs[0].p->onesided_buf[1];
+
+            ASSERT_LE(len, (size_t)UCC_TEST_MEM_SEGMENT_SIZE);
+            memcpy(ctx_src, ctxs[0]->init_buf, len);
+            memset(ctx_dst, 0, len);
+            a0->src.info.buffer = ctx_src;
+            a0->dst.info.buffer = ctx_dst;
+        }
+        {
+            UccReq req(team, ctxs);
+
+            req.start();
+            req.wait();
+            EXPECT_EQ(true, data_validate(ctxs)) << "alg " << alg;
+        }
+        data_fini(ctxs);
+    }
 }
 
 UCC_TEST_P(test_alltoall_0, single_persistent)

@@ -446,6 +446,13 @@ static inline ucc_status_t ucc_tl_ucp_check_memh(ucp_ep_h *ep, ucc_rank_t me,
     return UCC_OK;
 }
 
+/* DYNSEG PROBE: review instrumentation for openucx/ucc#1149, not for merge.
+ * Defined in tl_ucp_coll.c; totals are printed at library unload. */
+extern unsigned long ucc_tl_ucp_probe_ctx_hits;
+extern unsigned long ucc_tl_ucp_probe_ctx_hits_with_memh;
+extern unsigned long ucc_tl_ucp_probe_memh_hits;
+extern unsigned long ucc_tl_ucp_probe_imports;
+
 static inline int resolve_segment(const void *va, size_t *key_sizes,
                                   ptrdiff_t *key_offset, size_t nr_segments,
                                   ucc_tl_ucp_remote_info_t *rinfo)
@@ -506,6 +513,10 @@ ucc_tl_ucp_resolve_p2p_by_va(ucc_tl_ucp_team_t *team, void *va, ucp_ep_h *ep,
     *segment    = resolve_segment(va, key_sizes, &key_offset, ctx->n_rinfo_segs,
                                   ctx->remote_info);
     if (*segment >= 0) {
+        ucc_tl_ucp_probe_ctx_hits++;
+        if (dst_memh) {
+            ucc_tl_ucp_probe_ctx_hits_with_memh++;
+        }
         *rva = rvas[*segment] +
                ((uint64_t)va - (uint64_t)ctx->remote_info[*segment].va_base);
         if (ucc_unlikely(NULL == UCC_TL_UCP_REMOTE_RKEY(ctx, ctx_peer, *segment))) {
@@ -529,6 +540,7 @@ ucc_tl_ucp_resolve_p2p_by_va(ucc_tl_ucp_team_t *team, void *va, ucp_ep_h *ep,
         }
         status = ucc_tl_ucp_check_memh(ep, grank, peer, va, rva, rkey, tl_index, dst_memh);
         if (status == UCC_OK) {
+            ucc_tl_ucp_probe_memh_hits++;
             return UCC_OK;
         }
     }

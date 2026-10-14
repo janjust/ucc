@@ -72,10 +72,23 @@ jobs:
       run: tar xzf /tmp/ucc-build.tar.gz -C /tmp
     - name: Run UCC gtest (shard ${{ matrix.shard }})
       env:
-        GTEST_TOTAL_SHARDS: 2
-        GTEST_SHARD_INDEX: ${{ matrix.shard }}
         LD_LIBRARY_PATH: /tmp/ucc/install/lib:/tmp/ucx/install/lib
-      run: /tmp/ucc/install/bin/gtest
+      # DYNSEG PROBE (review of openucx/ucc#1149, not for merge):
+      # shard 0: no-context-segment probe, then the PR's own dyn-seg tests,
+      #          as separate processes so each prints its own probe totals
+      # shard 1: mixed context/plain buffers probe (expected to fail on the PR)
+      run: |
+        rc=0
+        if [ "${{ matrix.shard }}" = "0" ]; then
+          /tmp/ucc/install/bin/gtest --gtest_filter='*dynseg_probe_noctx*' || rc=1
+          echo "^^^^ end of dynseg_probe_noctx ^^^^"
+          /tmp/ucc/install/bin/gtest --gtest_filter='*_dynamic_segment*' || rc=1
+          echo "^^^^ end of PR dynamic_segment tests ^^^^"
+        else
+          /tmp/ucc/install/bin/gtest --gtest_filter='*dynseg_probe_mixed*' || rc=1
+          echo "^^^^ end of dynseg_probe_mixed ^^^^"
+        fi
+        exit $rc
     - name: Run ucc_info
       if: matrix.shard == 0
       run: |
