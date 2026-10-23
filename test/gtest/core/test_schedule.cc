@@ -4,6 +4,8 @@
  */
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -364,6 +366,106 @@ UCC_TEST_F(test_schedule_pipelined, cross_thread_completion)
         EXPECT_EQ(0, t.setup_unlocked);
     }
     finalize(&t);
+}
+
+/* The thread completing a schedule pauses in its completion callback, where
+   Open MPI's nonblocking completion runs, while the owner reuses the subtask */
+static struct {
+    std::mutex              lock;
+    std::condition_variable cv;
+    bool                    published;
+    bool                    reused;
+    std::atomic<int>        calls;
+} test_stale;
+
+static void test_stale_completion_cb(void *, ucc_status_t)
+{
+    std::unique_lock<std::mutex> guard(test_stale.lock);
+
+    test_stale.published = true;
+    test_stale.cv.notify_all();
+    test_stale.cv.wait(guard, [] { return test_stale.reused; });
+}
+
+static ucc_status_t test_stale_noop(ucc_coll_task_t *, ucc_coll_task_t *)
+{
+    return UCC_OK;
+}
+
+static ucc_status_t test_stale_next_completed(
+    ucc_coll_task_t *, ucc_coll_task_t *)
+{
+    test_stale.calls++;
+    return UCC_OK;
+}
+
+class test_schedule_notify : public ucc::test {
+  public:
+    ucc_context_t      core_ctx;
+    ucc_base_context_t base_ctx;
+    ucc_base_team_t    team;
+
+    test_schedule_notify() : core_ctx(), base_ctx(), team()
+    {
+        base_ctx.ucc_context = &core_ctx;
+        team.context         = &base_ctx;
+    }
+};
+
+/* completing a schedule must not call listeners its reused subtask got after */
+UCC_TEST_F(test_schedule_notify, no_walk_after_completion)
+{
+    bool           published = false;
+    ucc_schedule_t sched;
+    test_coll_task sub;
+    test_coll_task next;
+    std::thread    completer;
+
+    test_stale.published = false;
+    test_stale.reused    = false;
+    test_stale.calls     = 0;
+    ucc_coll_task_construct(&sched.super);
+    ASSERT_EQ(UCC_OK, ucc_schedule_init(&sched, NULL, &team));
+    ASSERT_EQ(UCC_OK, ucc_schedule_add_task(&sched, &sub));
+    sched.super.cb.cb   = test_stale_completion_cb;
+    sched.super.cb.data = NULL;
+    sched.super.flags |= UCC_COLL_TASK_FLAG_CB;
+    ASSERT_EQ(UCC_OK, ucc_schedule_start(&sched.super));
+    sub.status = UCC_OK;
+
+    completer  = std::thread([&sub] { ucc_task_complete(&sub); });
+    {
+        std::unique_lock<std::mutex> guard(test_stale.lock);
+        published = test_stale.cv.wait_for(guard, std::chrono::seconds(30), [] {
+            return test_stale.published;
+        });
+    }
+    if (published) {
+        EXPECT_EQ(UCC_OK, sched.super.super.status);
+        /* the pooled subtask comes back as a TL/UCP schedule added to a
+           CL/HIER one: frag start first, the new parent's completion second */
+        EXPECT_EQ(UCC_OK, ucc_coll_task_init(&sub, NULL, NULL));
+        EXPECT_EQ(
+            UCC_OK,
+            ucc_event_manager_subscribe(
+                &sub, UCC_EVENT_SCHEDULE_STARTED, &next, test_stale_noop));
+        EXPECT_EQ(
+            UCC_OK,
+            ucc_event_manager_subscribe(
+                &sub,
+                UCC_EVENT_COMPLETED_SCHEDULE,
+                &next,
+                test_stale_next_completed));
+    }
+    {
+        std::lock_guard<std::mutex> guard(test_stale.lock);
+        test_stale.reused = true;
+    }
+    test_stale.cv.notify_all();
+    completer.join();
+    EXPECT_TRUE(published);
+    EXPECT_EQ(0, test_stale.calls.load());
+    ucc_coll_task_destruct(&sched.super);
 }
 
 /* ------------------------------------------------------------------ */
